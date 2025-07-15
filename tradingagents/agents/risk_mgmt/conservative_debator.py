@@ -6,8 +6,8 @@ import json
 def create_safe_debator(llm):
     def safe_node(state) -> dict:
         risk_debate_state = state["risk_debate_state"]
-        history = risk_debate_state.get("history", "")
-        safe_history = risk_debate_state.get("safe_history", "")
+        history = risk_debate_state.get("history", "[]")
+        safe_history = risk_debate_state.get("safe_history", "[]")
 
         current_risky_response = risk_debate_state.get("current_risky_response", "")
         current_neutral_response = risk_debate_state.get("current_neutral_response", "")
@@ -31,17 +31,59 @@ Latest World Affairs Report: {news_report}
 Company Fundamentals Report: {fundamentals_report}
 Here is the current conversation history: {history} Here is the last response from the risky analyst: {current_risky_response} Here is the last response from the neutral analyst: {current_neutral_response}. If there are no responses from the other viewpoints, do not halluncinate and just present your point.
 
-Engage by questioning their optimism and emphasizing the potential downsides they may have overlooked. Address each of their counterpoints to showcase why a conservative stance is ultimately the safest path for the firm's assets. Focus on debating and critiquing their arguments to demonstrate the strength of a low-risk strategy over their approaches. Output conversationally as if you are speaking without any special formatting."""
+Engage by questioning their optimism and emphasizing the potential downsides they may have overlooked. Address each of their counterpoints to showcase why a conservative stance is ultimately the safest path for the firm's assets. Focus on debating and critiquing their arguments to demonstrate the strength of a low-risk strategy over their approaches. Output conversationally as if you are speaking without any special formatting.
+
+Respond ONLY with a valid JSON object in the following format:
+{  
+  "content": "...", // Overall writeup of the response
+  "arguments": [{
+      "title": "...", // Short title for the argument
+      "content": "...", // Detailed content of the argument
+      "source": "...", // Source of the information (e.g., "Market Research Report")
+      "confidence": "..." // Confidence level in the argument (1-100)
+  }, ...],
+  "counterpoints": [{
+      "title": "...",
+      "content": "...",
+      "source": "...",
+      "confidence": "...",
+      "target": "..." // The agent you are responding to, e.g. "Conservative", "Neutral"
+    }, ...]
+}
+"""
 
         response = llm.invoke(prompt)
+        
+        # Parse the JSON from the LLM response
+        argument_json = {}
+        try:
+            argument_json = json.loads(response.content)
+        except Exception:
+            pass
 
-        argument = f"Safe Analyst: {response.content}"
+        # Parse History and append the new argument
+        try:
+            history_list = json.loads(history) if history else []
+        except Exception:
+            history_list = []
+        history_list.append(argument_json)
+        new_history = json.dumps(history_list)
+
+        # Parse Safe History and append the new argument
+        try:
+            safe_history_list = json.loads(safe_history) if safe_history else []
+        except Exception:
+            safe_history_list = []
+        safe_history_list.append(argument_json)
+        new_safe_history = json.dumps(safe_history_list)
+
+        argument = json.dumps(argument_json)
 
         new_risk_debate_state = {
-            "history": history + "\n" + argument,
-            "risky_history": risk_debate_state.get("risky_history", ""),
-            "safe_history": safe_history + "\n" + argument,
-            "neutral_history": risk_debate_state.get("neutral_history", ""),
+            "history": new_history,
+            "risky_history": risk_debate_state.get("risky_history", "[]"),
+            "safe_history": new_safe_history,
+            "neutral_history": risk_debate_state.get("neutral_history", "[]"),
             "latest_speaker": "Safe",
             "current_risky_response": risk_debate_state.get(
                 "current_risky_response", ""

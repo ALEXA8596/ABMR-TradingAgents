@@ -35,14 +35,27 @@ Here are your past reflections on mistakes:
 
 Here is the debate:
 Debate History:
-{history}"""
+{history}
+
+Respond ONLY with a valid JSON object in the following format:
+{
+    "recommendation": "...", // Your final recommendation (Buy, Sell, or Hold)
+    "investment_plan": "...", // Detailed investment plan for the trader
+    "arguments": [{
+        "title": "...", // Short title for the argument
+        "analysis": "...", // Detailed analysis of a specific argument
+    }, ...],
+    "rationale": "...", // Overall explanation of your recommendation
+    "confidence": "..." // Confidence level in your recommendation (1-100)
+}
+"""
         response = llm.invoke(prompt)
 
         new_investment_debate_state = {
             "judge_decision": response.content,
-            "history": investment_debate_state.get("history", ""),
-            "bear_history": investment_debate_state.get("bear_history", ""),
-            "bull_history": investment_debate_state.get("bull_history", ""),
+            "history": investment_debate_state.get("history", "[]"),
+            "bear_history": investment_debate_state.get("bear_history", "[]"),
+            "bull_history": investment_debate_state.get("bull_history", "[]"),
             "current_response": response.content,
             "count": investment_debate_state["count"],
         }

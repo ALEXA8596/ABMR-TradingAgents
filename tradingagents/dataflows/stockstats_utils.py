@@ -23,7 +23,7 @@ class StockstatsUtils:
         online: Annotated[
             bool,
             "whether to use online tools to fetch data or offline tools. If True, will use online tools.",
-        ] = False,
+        ] = True,
     ):
         df = None
         data = None
@@ -42,7 +42,7 @@ class StockstatsUtils:
         else:
             # Get today's date as YYYY-mm-dd to add to cache
             today_date = pd.Timestamp.today()
-            curr_date = pd.to_datetime(curr_date)
+            curr_date = pd.to_datetime(curr_date) # type: ignore
 
             end_date = today_date
             start_date = today_date - pd.DateOffset(years=15)
@@ -70,12 +70,12 @@ class StockstatsUtils:
                     progress=False,
                     auto_adjust=True,
                 )
-                data = data.reset_index()
+                data = data.reset_index() # type: ignore
                 data.to_csv(data_file, index=False)
 
             df = wrap(data)
             df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
-            curr_date = curr_date.strftime("%Y-%m-%d")
+            curr_date = curr_date.strftime("%Y-%m-%d") # type: ignore
 
         df[indicator]  # trigger stockstats to calculate the indicator
         matching_rows = df[df["Date"].str.startswith(curr_date)]

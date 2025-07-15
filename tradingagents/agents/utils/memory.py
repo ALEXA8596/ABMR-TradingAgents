@@ -55,12 +55,12 @@ class FinancialSituationMemory:
         )
 
         matched_results = []
-        for i in range(len(results["documents"][0])):
+        for i in range(len(results["documents"][0])): # type: ignore
             matched_results.append(
                 {
-                    "matched_situation": results["documents"][0][i],
-                    "recommendation": results["metadatas"][0][i]["recommendation"],
-                    "similarity_score": 1 - results["distances"][0][i],
+                    "matched_situation": results["documents"][0][i], # type: ignore
+                    "recommendation": results["metadatas"][0][i]["recommendation"], # type: ignore
+                    "similarity_score": 1 - results["distances"][0][i], # type: ignore
                 }
             )
 
@@ -69,7 +69,7 @@ class FinancialSituationMemory:
 
 if __name__ == "__main__":
     # Example usage
-    matcher = FinancialSituationMemory()
+    matcher = FinancialSituationMemory() # type: ignore
 
     # Example data
     example_data = [

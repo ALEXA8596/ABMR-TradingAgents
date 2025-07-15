@@ -19,7 +19,7 @@ def create_news_analyst(llm, toolkit):
 
         system_message = (
             "You are a news researcher tasked with analyzing recent news and trends over the past week. Please write a comprehensive report of the current state of the world that is relevant for trading and macroeconomics. Look at news from EODHD, and finnhub to be comprehensive. Do not simply state the trends are mixed, provide detailed and finegrained analysis and insights that may help traders make decisions."
-            + """ Make sure to append a Makrdown table at the end of the report to organize key points in the report, organized and easy to read."""
+            + " Make sure to add a Markdown table to organize key points in the report, organized and easy to read.",
         )
 
         prompt = ChatPromptTemplate.from_messages(
@@ -33,7 +33,23 @@ def create_news_analyst(llm, toolkit):
                     " If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable,"
                     " prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop."
                     " You have access to the following tools: {tool_names}.\n{system_message}"
-                    "For your reference, the current date is {current_date}. We are looking at the company {ticker}",
+                    "For your reference, the current date is {current_date}. We are looking at the company {ticker}"
+                    """
+                    Respond ONLY with a valid JSON object in the following format:
+                    {   
+                        "prefix": "...", // The prefix of the response. If previous messages contain FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL**, make sure to include it in your response too. Else, leave it empty.
+                        "content": "...", // The overall summary of the response
+                        "news": [{
+                            "title": "...", // The title of the news article
+                            "source": "...", // The source of the news article
+                            "trustworthiness": "...", // The trustworthiness of the news source, e.g. "high", "medium", "low"
+                            "content": "...", // A brief summary of the news article with analysis
+                        }, ...],
+                        "confidence": "", // The confidence of the response, a number between 1 and 100
+                        "decision": "", // the decision of the response as a scale from 1 to 100, where 1 is do not trade and 100 is trade
+                        "table": "" // A Markdown table with key points in the report, organized and easy to read
+                    }
+                    """
                 ),
                 MessagesPlaceholder(variable_name="messages"),
             ]

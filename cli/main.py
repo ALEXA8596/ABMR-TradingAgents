@@ -340,7 +340,7 @@ def update_display(layout, spinner_text=None):
 
     # Add a footer to indicate if messages were truncated
     if len(all_messages) > max_messages:
-        messages_table.footer = (
+        messages_table.footer = ( # type: ignore
             f"[dim]Showing last {max_messages} of {len(all_messages)} messages[/dim]"
         )
 
@@ -705,7 +705,6 @@ def display_complete_report(final_state):
                 )
             )
 
-
 def update_research_team_status(status):
     """Update status for all research team members and trader."""
     research_team = ["Bull Researcher", "Bear Researcher", "Research Manager", "Trader"]
@@ -843,7 +842,7 @@ def run_analysis():
 
         # Stream the analysis
         trace = []
-        for chunk in graph.graph.stream(init_agent_state, **args):
+        for chunk in graph.graph.stream(init_agent_state, **args): # type: ignore
             if len(chunk["messages"]) > 0:
                 # Get the last message from the chunk
                 last_message = chunk["messages"][-1]

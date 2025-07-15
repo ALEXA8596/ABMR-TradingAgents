@@ -6,8 +6,8 @@ import json
 def create_bear_researcher(llm, memory):
     def bear_node(state) -> dict:
         investment_debate_state = state["investment_debate_state"]
-        history = investment_debate_state.get("history", "")
-        bear_history = investment_debate_state.get("bear_history", "")
+        history = investment_debate_state.get("history", "[]")
+        bear_history = investment_debate_state.get("bear_history", "[]")
 
         current_response = investment_debate_state.get("current_response", "")
         market_research_report = state["market_report"]
@@ -29,7 +29,7 @@ Key points to focus on:
 - Risks and Challenges: Highlight factors like market saturation, financial instability, or macroeconomic threats that could hinder the stock's performance.
 - Competitive Weaknesses: Emphasize vulnerabilities such as weaker market positioning, declining innovation, or threats from competitors.
 - Negative Indicators: Use evidence from financial data, market trends, or recent adverse news to support your position.
-- Bull Counterpoints: Critically analyze the bull argument with specific data and sound reasoning, exposing weaknesses or over-optimistic assumptions.
+- Bull Counterpoints: Critically analyze the bull argument with specific data and sound reasoning, exposing weaknesses or over-optimistic assumptions. Cite which resource you got the information from or whether it's a basic economic principle.
 - Engagement: Present your argument in a conversational style, directly engaging with the bull analyst's points and debating effectively rather than simply listing facts.
 
 Resources available:
@@ -42,17 +42,60 @@ Conversation history of the debate: {history}
 Last bull argument: {current_response}
 Reflections from similar situations and lessons learned: {past_memory_str}
 Use this information to deliver a compelling bear argument, refute the bull's claims, and engage in a dynamic debate that demonstrates the risks and weaknesses of investing in the stock. You must also address reflections and learn from lessons and mistakes you made in the past.
-"""
 
+Respond ONLY with a valid JSON object in the following format:
+{
+  "arguments": [{
+      "title": "...", // Short title for the argument
+      "content": "...", // Detailed content of the argument
+      "source": "...", // Source of the information (e.g., "Market Research Report")
+      "confidence": "..." // Confidence level in the argument (1-100)
+  }, ...],
+  "risks": [{
+      "title": "...",
+      "content": "...",
+      "source": "...",
+      "confidence": "..."
+  }, ...],
+  "counterpoints": [{
+      "title": "...",
+      "content": "...",
+      "source": "...",
+      "confidence": "..."
+    }, ...]
+}
+Confidence indicates the level of certainty in the argument presented from a scale from 1 to 100
+"""
         response = llm.invoke(prompt)
 
-        argument = f"Bear Analyst: {response.content}"
+        # Parse the JSON from the LLM response
+        argument_json = {}
+        try:
+            argument_json = json.loads(response.content)
+        except Exception:
+            pass
+
+        # Parse History and append the new argument
+        try:
+            history_list = json.loads(history)
+        except Exception:
+            history_list = []
+        history_list.append(argument_json)
+        new_history = json.dumps(history_list)
+
+        # Parse Bear History and append the new argument
+        try:
+            bear_history_list = json.loads(bear_history)
+        except Exception:
+            bear_history_list = []
+        bear_history_list.append(argument_json)
+        new_bear_history = json.dumps(bear_history_list)
 
         new_investment_debate_state = {
-            "history": history + "\n" + argument,
-            "bear_history": bear_history + "\n" + argument,
-            "bull_history": investment_debate_state.get("bull_history", ""),
-            "current_response": argument,
+            "history": new_history,
+            "bear_history": new_bear_history,
+            "bull_history": investment_debate_state.get("bull_history", "[]"),
+            "current_response": argument_json,
             "count": investment_debate_state["count"] + 1,
         }
 
