@@ -18,6 +18,17 @@ def create_research_manager(llm, memory):
         past_memory_str = ""
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
+        
+        json_format = """{
+    "recommendation": "...", // Your final recommendation (Buy, Sell, or Hold)
+    "investment_plan": "...", // Detailed investment plan for the trader
+    "arguments": [{
+        "title": "...", // Short title for the argument
+        "analysis": "...", // Detailed analysis of a specific argument
+    }, ...],
+    "rationale": "...", // Overall explanation of your recommendation
+    "confidence": "..." // Confidence level in your recommendation (1-100)
+}"""
 
         prompt = f"""As the portfolio manager and debate facilitator, your role is to critically evaluate this round of debate and make a definitive decision: align with the bear analyst, the bull analyst, or choose Hold only if it is strongly justified based on the arguments presented.
 
@@ -38,16 +49,7 @@ Debate History:
 {history}
 
 Respond ONLY with a valid JSON object in the following format:
-{
-    "recommendation": "...", // Your final recommendation (Buy, Sell, or Hold)
-    "investment_plan": "...", // Detailed investment plan for the trader
-    "arguments": [{
-        "title": "...", // Short title for the argument
-        "analysis": "...", // Detailed analysis of a specific argument
-    }, ...],
-    "rationale": "...", // Overall explanation of your recommendation
-    "confidence": "..." // Confidence level in your recommendation (1-100)
-}
+{json_format}
 """
         response = llm.invoke(prompt)
 

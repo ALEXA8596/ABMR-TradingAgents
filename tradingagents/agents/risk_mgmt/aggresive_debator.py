@@ -17,6 +17,23 @@ def create_risky_debator(llm):
         fundamentals_report = state["fundamentals_report"]
 
         trader_decision = state["trader_investment_plan"]
+        
+        json_format = """{
+  "content": "...", // Overall writeup of the response
+  "arguments": [{
+      "title": "...", // Short title for the argument
+      "content": "...", // Detailed content of the argument
+      "source": "...", // Source of the information (e.g., "Market Research Report")
+      "confidence": "..." // Confidence level in the argument (1-100)
+  }, ...],
+  "counterpoints": [{
+      "title": "...",
+      "content": "...",
+      "source": "...",
+      "confidence": "...",
+      "target": "..." // The agent you are responding to, e.g. "Conservative", "Neutral"
+    }, ...]
+}"""
 
         prompt = f"""As the Risky Risk Analyst, your role is to actively champion high-reward, high-risk opportunities, emphasizing bold strategies and competitive advantages. When evaluating the trader's decision or plan, focus intently on the potential upside, growth potential, and innovative benefits—even when these come with elevated risk. Use the provided market data and sentiment analysis to strengthen your arguments and challenge the opposing views. Specifically, respond directly to each point made by the conservative and neutral analysts, countering with data-driven rebuttals and persuasive reasoning. Highlight where their caution might miss critical opportunities or where their assumptions may be overly conservative. Here is the trader's decision:
 
@@ -33,22 +50,7 @@ Here is the current conversation history: {history} Here are the last arguments 
 Engage actively by addressing any specific concerns raised, refuting the weaknesses in their logic, and asserting the benefits of risk-taking to outpace market norms. Maintain a focus on debating and persuading, not just presenting data. Challenge each counterpoint to underscore why a high-risk approach is optimal. Output conversationally as if you are speaking without any special formatting.
 
 Respond ONLY with a valid JSON object in the following format:
-{
-  "content": "...", // Overall writeup of the response
-  "arguments": [{
-      "title": "...", // Short title for the argument
-      "content": "...", // Detailed content of the argument
-      "source": "...", // Source of the information (e.g., "Market Research Report")
-      "confidence": "..." // Confidence level in the argument (1-100)
-  }, ...],
-  "counterpoints": [{
-      "title": "...",
-      "content": "...",
-      "source": "...",
-      "confidence": "...",
-      "target": "..." // The agent you are responding to, e.g. "Conservative", "Neutral"
-    }, ...]
-}
+{json_format}
 """
 
         response = llm.invoke(prompt)

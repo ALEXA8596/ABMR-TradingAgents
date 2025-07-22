@@ -21,6 +21,27 @@ def create_bear_researcher(llm, memory):
         past_memory_str = ""
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
+            
+        json_format = """{
+  "arguments": [{
+      "title": "...", // Short title for the argument
+      "content": "...", // Detailed content of the argument
+      "source": "...", // Source of the information (e.g., "Market Research Report")
+      "confidence": "..." // Confidence level in the argument (1-100)
+  }, ...],
+  "risks": [{
+      "title": "...",
+      "content": "...",
+      "source": "...",
+      "confidence": "..."
+  }, ...],
+  "counterpoints": [{
+      "title": "...",
+      "content": "...",
+      "source": "...",
+      "confidence": "..."
+    }, ...]
+}"""
 
         prompt = f"""You are a Bear Analyst making the case against investing in the stock. Your goal is to present a well-reasoned argument emphasizing risks, challenges, and negative indicators. Leverage the provided research and data to highlight potential downsides and counter bullish arguments effectively.
 
@@ -44,26 +65,9 @@ Reflections from similar situations and lessons learned: {past_memory_str}
 Use this information to deliver a compelling bear argument, refute the bull's claims, and engage in a dynamic debate that demonstrates the risks and weaknesses of investing in the stock. You must also address reflections and learn from lessons and mistakes you made in the past.
 
 Respond ONLY with a valid JSON object in the following format:
-{
-  "arguments": [{
-      "title": "...", // Short title for the argument
-      "content": "...", // Detailed content of the argument
-      "source": "...", // Source of the information (e.g., "Market Research Report")
-      "confidence": "..." // Confidence level in the argument (1-100)
-  }, ...],
-  "risks": [{
-      "title": "...",
-      "content": "...",
-      "source": "...",
-      "confidence": "..."
-  }, ...],
-  "counterpoints": [{
-      "title": "...",
-      "content": "...",
-      "source": "...",
-      "confidence": "..."
-    }, ...]
-}
+{json_format}
+The content of the arguments should be a detailed explanation of the argument, including data and reasoning. The risks should outline potential downsides or threats to the investment. The counterpoints should address specific claims made by the bull analyst, providing a rebuttal with supporting evidence.
+Source indicates where the information was obtained from, such as a specific report or data source.
 Confidence indicates the level of certainty in the argument presented from a scale from 1 to 100
 """
         response = llm.invoke(prompt)

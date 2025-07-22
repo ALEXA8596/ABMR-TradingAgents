@@ -87,6 +87,7 @@ Volume-Based Indicators:
         prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
         prompt = prompt.partial(current_date=current_date)
         prompt = prompt.partial(ticker=ticker)
+        prompt = prompt.partial(json_format=json_format)
 
         chain = prompt | llm.bind_tools(tools)
 

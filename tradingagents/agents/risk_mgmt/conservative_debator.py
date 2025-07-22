@@ -18,6 +18,23 @@ def create_safe_debator(llm):
         fundamentals_report = state["fundamentals_report"]
 
         trader_decision = state["trader_investment_plan"]
+        
+        json_format = """{  
+  "content": "...", // Overall writeup of the response
+  "arguments": [{
+      "title": "...", // Short title for the argument
+      "content": "...", // Detailed content of the argument
+      "source": "...", // Source of the information (e.g., "Market Research Report")
+      "confidence": "..." // Confidence level in the argument (1-100)
+  }, ...],
+  "counterpoints": [{
+      "title": "...",
+      "content": "...",
+      "source": "...",
+      "confidence": "...",
+      "target": "..." // The agent you are responding to, e.g. "Conservative", "Neutral"
+    }, ...]
+}"""
 
         prompt = f"""As the Safe/Conservative Risk Analyst, your primary objective is to protect assets, minimize volatility, and ensure steady, reliable growth. You prioritize stability, security, and risk mitigation, carefully assessing potential losses, economic downturns, and market volatility. When evaluating the trader's decision or plan, critically examine high-risk elements, pointing out where the decision may expose the firm to undue risk and where more cautious alternatives could secure long-term gains. Here is the trader's decision:
 
@@ -34,22 +51,7 @@ Here is the current conversation history: {history} Here is the last response fr
 Engage by questioning their optimism and emphasizing the potential downsides they may have overlooked. Address each of their counterpoints to showcase why a conservative stance is ultimately the safest path for the firm's assets. Focus on debating and critiquing their arguments to demonstrate the strength of a low-risk strategy over their approaches. Output conversationally as if you are speaking without any special formatting.
 
 Respond ONLY with a valid JSON object in the following format:
-{  
-  "content": "...", // Overall writeup of the response
-  "arguments": [{
-      "title": "...", // Short title for the argument
-      "content": "...", // Detailed content of the argument
-      "source": "...", // Source of the information (e.g., "Market Research Report")
-      "confidence": "..." // Confidence level in the argument (1-100)
-  }, ...],
-  "counterpoints": [{
-      "title": "...",
-      "content": "...",
-      "source": "...",
-      "confidence": "...",
-      "target": "..." // The agent you are responding to, e.g. "Conservative", "Neutral"
-    }, ...]
-}
+{json_format}
 """
 
         response = llm.invoke(prompt)

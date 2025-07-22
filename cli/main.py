@@ -799,7 +799,7 @@ def run_analysis():
     # Now start the display layout
     layout = create_layout()
 
-    with Live(layout, refresh_per_second=4) as live:
+    with Live(layout, refresh_per_second=1) as live:
         # Initial display
         update_display(layout)
 

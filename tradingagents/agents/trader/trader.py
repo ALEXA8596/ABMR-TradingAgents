@@ -26,6 +26,14 @@ def create_trader(llm, memory):
             "role": "user",
             "content": f"Based on a comprehensive analysis by a team of analysts, here is an investment plan tailored for {company_name}. This plan incorporates insights from current technical market trends, macroeconomic indicators, and social media sentiment. Use this plan as a foundation for evaluating your next trading decision.\n\nProposed Investment Plan: {investment_plan}\n\nLeverage these insights to make an informed and strategic decision.",
         }
+        
+        json_format = """{  
+  "content": "...",
+    "recommendation": "...",
+    "confidence": "...",
+    "reasoning": "...",
+    "suffix": "FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL**"
+}"""
 
         messages = [
             {
@@ -33,13 +41,13 @@ def create_trader(llm, memory):
                 "content": f"""You are a trading agent analyzing market data to make investment decisions. Based on your analysis, provide a specific recommendation to buy, sell, or hold. End with a firm decision and always conclude your response with 'FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL**' to confirm your recommendation. Do not forget to utilize lessons from past decisions to learn from your mistakes. Here is some reflections from similar situations you traded in and the lessons learned: {past_memory_str}
 
 Respond ONLY with a valid JSON object in the following format:
-{  
-  "content": "...", // Overall writeup of the response
-    "recommendation": "...", // The final recommendation, either "BUY", "HOLD", or "SELL"
-    "confidence": "...", // Confidence level in the recommendation (1-100)
-    "reasoning": "..." // Detailed reasoning behind the recommendation
-    "suffix": "FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL**" //always end with this suffix to confirm the recommendation
-}""",
+
+{json_format}
+
+Content should be a detailed explanation of the recommendation, including data and reasoning. Confidence indicates the level of certainty in the recommendation presented from a scale from 1 to 100. Reasoning should provide a clear explanation of why the recommendation was made.
+The recommendation should contain either "BUY", "HOLD", or "SELL" based on the analysis of the provided investment plan and market data.
+The suffix should always end with 'FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL**' to confirm the recommendation.
+""",
             },
             context,
         ]
