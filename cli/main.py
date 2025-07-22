@@ -764,7 +764,8 @@ def run_analysis():
             timestamp, message_type, content = obj.messages[-1]
             content = content.replace("\n", " ")  # Replace newlines with spaces
             with open(log_file, "a") as f:
-                f.write(f"{timestamp} [{message_type}] {content}\n")
+                with open(log_file, "a", encoding="utf-8") as f:
+                    f.write(f"{timestamp} [{message_type}] {content}\n")
         return wrapper
     
     def save_tool_call_decorator(obj, func_name):

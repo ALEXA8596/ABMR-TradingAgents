@@ -50,6 +50,21 @@ Volume-Based Indicators:
             + """ Make sure to append a Markdown table at the end of the report to organize key points in the report, organized and easy to read."""
         )
 
+        json_format = (" Respond ONLY with a valid JSON object in the following format:"
+"""
+{   
+    "prefix": "...", // The prefix of the response. If previous messages contain FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL**, make sure to include it in your response too. Else, leave it empty.
+    "content": "...", // Overall writeup of the response
+    "indicators": [{
+        "name": "...", // Include just the name of the indicator, e.g. close_50_sma
+        "rationale": "This indicator is relevant because..."
+    }], // A list of indicators selected, each with a name and reason for selection
+    "confidence": "", // The confidence of the response, a number between 1 and 100
+    "decision": "", // the decision of the response as a scale from 1 to 100, where 1 is do not trade and 100 is trade
+    "table": "" // A Markdown table with key points in the report, organized and easy to read
+}
+""")
+
         prompt = ChatPromptTemplate.from_messages(
             [
                 (
@@ -61,7 +76,8 @@ Volume-Based Indicators:
                     " If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable,"
                     " prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop."
                     " You have access to the following tools: {tool_names}.\n{system_message}"
-                    "For your reference, the current date is {current_date}. The company we want to look at is {ticker}",
+                    "For your reference, the current date is {current_date}. The company we want to look at is {ticker}"
+                    "The JSON format for the response is as follows:\n{json_format}"
                 ),
                 MessagesPlaceholder(variable_name="messages"),
             ]
