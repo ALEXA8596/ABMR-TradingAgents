@@ -46,13 +46,28 @@ class ConditionalLogic:
     def should_continue_debate(self, state: AgentState) -> str:
         """Determine if debate should continue."""
 
-        if (
-            state["investment_debate_state"]["count"] >= 2 * self.max_debate_rounds
-        ):  # 3 rounds of back-and-forth between 2 agents
+        # 1 => Bullish Researcher
+        # 2 => Bearish Researcher
+        # 3 => Bullish Cross Examination Researcher
+        # 4 => Bearish Cross Examination Researcher
+        # 5 => Bullish Researcher
+        # 6 => Bearish Researcher
+        # 7 => Research Manager
+        # Repeat 3 to 7 as needed
+
+        count = state["investment_debate_state"]["count"]
+
+        if count >= 4 * self.max_debate_rounds:
             return "Research Manager"
-        if state["investment_debate_state"]["current_response"].startswith("Bull"):
-            return "Bear Researcher"
-        return "Bull Researcher"
+
+        sequence = [
+            "Bull Researcher",
+            "Bear Researcher",
+            "Bull Cross Examination Researcher",
+            "Bear Cross Examination Researcher",
+        ]
+
+        return sequence[count % len(sequence)]
 
     def should_continue_risk_analysis(self, state: AgentState) -> str:
         """Determine if risk analysis should continue."""
