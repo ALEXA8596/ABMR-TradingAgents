@@ -164,26 +164,6 @@ Provide a comprehensive analysis that builds upon previous rounds and directly a
 
         argument = f"Risky Analyst: {response.content}"
 
-        # Parse History and append the new argument
-        try:
-            history_list = json.loads(history)
-        except Exception:
-            history_list = []
-        history_list.append(argument_json)
-        new_history = json.dumps(history_list)
-
-        # Parse Risky History and append the new argument
-        try:
-            risky_history_list = json.loads(risky_history)
-        except Exception:
-            risky_history_list = []
-        risky_history_list.append(argument_json)
-        new_risky_history = json.dumps(risky_history_list)
-
-        argument = argument_json
-        history = new_history
-        risky_history = new_risky_history
-        
         new_risk_debate_state = {
             "history": history + "\n" + argument,
             "risky_history": risky_history + "\n" + argument,
