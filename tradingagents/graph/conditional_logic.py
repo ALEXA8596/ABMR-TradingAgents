@@ -65,3 +65,11 @@ class ConditionalLogic:
         if state["risk_debate_state"]["latest_speaker"].startswith("Safe"):
             return "Neutral Analyst"
         return "Risky Analyst"
+
+    def should_continue_portfolio_flow(self, state: AgentState) -> str:
+        """Determine if portfolio optimization flow should continue."""
+        # Check if portfolio optimization has been completed
+        if "portfolio_optimization_state" not in state or not state["portfolio_optimization_state"]:
+            return "Portfolio Optimizer"
+        else:
+            return "END"
