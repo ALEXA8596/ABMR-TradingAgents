@@ -2,12 +2,24 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 import time
 import json
+from tradingagents.blackboard.utils import create_agent_blackboard
 
 
 def create_news_analyst(llm, toolkit):
     def news_analyst_node(state):
         current_date = state["trade_date"]
         ticker = state["company_of_interest"]
+
+        # Blackboard integration
+        blackboard_agent = create_agent_blackboard("NA_001", "NewsAnalyst")
+        # Read recent news analysis reports for context
+        recent_analyses = blackboard_agent.get_analysis_reports(ticker=ticker)
+        blackboard_context = ""
+        if recent_analyses:
+            blackboard_context += "\n\nRecent News Analysis Reports on Blackboard:\n"
+            for analysis in recent_analyses[-3:]:
+                content = analysis.get('content', {})
+                blackboard_context += f"- {analysis['sender'].get('role', 'Unknown')}: {content.get('recommendation', 'N/A')} (Confidence: {content.get('confidence', 'N/A')})\n"
 
         if toolkit.config["online_tools"]:
             tools = [toolkit.get_global_news_openai, toolkit.get_google_news]
@@ -20,7 +32,8 @@ def create_news_analyst(llm, toolkit):
 
         system_message = (
             "You are a news researcher tasked with analyzing recent news and trends over the past week. Please write a comprehensive report of the current state of the world that is relevant for trading and macroeconomics. Look at news from EODHD, and finnhub to be comprehensive. Do not simply state the trends are mixed, provide detailed and finegrained analysis and insights that may help traders make decisions."
-            + " Make sure to add a Markdown table to organize key points in the report, organized and easy to read.",
+            + " Make sure to append a Markdown table at the end of the report to organize key points in the report, organized and easy to read."
+            + f"\n\nBlackboard Context:{blackboard_context}"
         )
 
         json_format = """
@@ -73,6 +86,30 @@ def create_news_analyst(llm, toolkit):
         # Escape the result content to handle Unicode characters
         if hasattr(result, 'content') and result.content:
             result.content = result.content.encode('utf-8', errors='replace').decode('utf-8')
+
+        # Post the generated report to the blackboard
+        # Extract recommendation and confidence heuristically
+        recommendation = "Neutral"
+        confidence = "Medium"
+        if "BUY" in report.upper():
+            recommendation = "Bullish"
+        elif "SELL" in report.upper():
+            recommendation = "Bearish"
+        if "HIGH" in report.upper() and "CONFIDENCE" in report.upper():
+            confidence = "High"
+        elif "LOW" in report.upper() and "CONFIDENCE" in report.upper():
+            confidence = "Low"
+        analysis_content = {
+            "ticker": ticker,
+            "recommendation": recommendation,
+            "confidence": confidence,
+            "analysis": report
+        }
+        blackboard_agent.post_analysis_report(
+            ticker=ticker,
+            analysis=analysis_content,
+            confidence=confidence
+        )
 
         return {
             "messages": [result],

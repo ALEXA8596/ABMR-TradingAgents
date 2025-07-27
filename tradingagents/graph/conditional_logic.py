@@ -71,12 +71,25 @@ class ConditionalLogic:
 
     def should_continue_risk_analysis(self, state: AgentState) -> str:
         """Determine if risk analysis should continue."""
+        print(f"[DEBUG] should_continue_risk_analysis: count={state['risk_debate_state']['count']}, max_risk_discuss_rounds={self.max_risk_discuss_rounds}")
+        # Check if we've reached the maximum number of rounds
         if (
             state["risk_debate_state"]["count"] >= 3 * self.max_risk_discuss_rounds
         ):  # 3 rounds of back-and-forth between 3 agents
+            print("[DEBUG] Risk debate complete. Handing off to Risk Judge.")
             return "Risk Judge"
-        if state["risk_debate_state"]["latest_speaker"].startswith("Risky"):
+        
+        # Determine whose turn it is based on the count
+        # Count % 3 = 0: Risky Analyst
+        # Count % 3 = 1: Safe Analyst  
+        # Count % 3 = 2: Neutral Analyst
+        turn = state["risk_debate_state"]["count"] % 3
+        if turn == 0:
+            print("[DEBUG] Next: Risky Analyst")
+            return "Risky Analyst"
+        elif turn == 1:
+            print("[DEBUG] Next: Safe Analyst")
             return "Safe Analyst"
-        if state["risk_debate_state"]["latest_speaker"].startswith("Safe"):
+        else:
+            print("[DEBUG] Next: Neutral Analyst")
             return "Neutral Analyst"
-        return "Risky Analyst"

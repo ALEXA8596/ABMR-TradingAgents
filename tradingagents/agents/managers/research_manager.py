@@ -1,9 +1,11 @@
 import time
 import json
+from tradingagents.blackboard.utils import create_agent_blackboard
 
 
 def create_research_manager(llm, memory):
     def research_manager_node(state) -> dict:
+        ticker = state["company_of_interest"]
         history = state["investment_debate_state"].get("history", "")
         market_research_report = state["market_report"]
         sentiment_report = state["sentiment_report"]
@@ -11,6 +13,20 @@ def create_research_manager(llm, memory):
         fundamentals_report = state["fundamentals_report"]
 
         investment_debate_state = state["investment_debate_state"]
+
+        # Blackboard integration
+        blackboard_agent = create_agent_blackboard("RM_001", "ResearchManager")
+        
+        # Read recent analyst reports for context
+        recent_analyses = blackboard_agent.get_analysis_reports(ticker=ticker)
+        blackboard_context = ""
+        if recent_analyses:
+            blackboard_context += "\n\nRecent Analyst Reports on Blackboard:\n"
+            for analysis in recent_analyses[-4:]:  # Last 4 analyses
+                content = analysis.get('content', {})
+                analysis_data = content.get('analysis', {})
+                if isinstance(analysis_data, dict):
+                    blackboard_context += f"- {analysis['sender'].get('role', 'Unknown')}: {analysis_data.get('recommendation', 'N/A')} (Confidence: {analysis_data.get('confidence', 'N/A')})\n"
 
         curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
         past_memories = memory.get_memories(curr_situation, n_matches=2)
@@ -44,6 +60,8 @@ Take into account your past mistakes on similar situations. Use these insights t
 Here are your past reflections on mistakes:
 \"{past_memory_str}\"
 
+Blackboard Context:{blackboard_context}
+
 Here is the debate:
 Debate History:
 {history}
@@ -52,6 +70,39 @@ Respond ONLY with a valid JSON object in the following format:
 {json_format}
 """
         response = llm.invoke(prompt)
+
+        # Extract decision and confidence from response
+        decision = "Hold"
+        confidence = "Medium"
+        response_text = response.content.upper()
+        
+        if "BUY" in response_text:
+            decision = "Buy"
+        elif "SELL" in response_text:
+            decision = "Sell"
+        
+        if "HIGH" in response_text and "CONFIDENCE" in response_text:
+            confidence = "High"
+        elif "LOW" in response_text and "CONFIDENCE" in response_text:
+            confidence = "Low"
+
+        # Post investment decision to blackboard
+        blackboard_agent.post_investment_decision(
+            ticker=ticker,
+            decision=decision,
+            reasoning=response.content,
+            confidence=confidence
+        )
+
+        # Post debate summary to blackboard
+        debate_summary = f"Investment debate for {ticker} concluded with {decision} decision. {response.content[:200]}..."
+        blackboard_agent.post_debate_summary(
+            ticker=ticker,
+            debate_type="Investment",
+            summary=debate_summary,
+            decision=decision,
+            confidence=confidence
+        )
 
         new_investment_debate_state = {
             "judge_decision": response.content,

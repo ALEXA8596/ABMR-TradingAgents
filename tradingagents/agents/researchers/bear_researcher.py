@@ -1,10 +1,12 @@
 from langchain_core.messages import AIMessage
 import time
 import json
+from tradingagents.blackboard.utils import create_agent_blackboard
 
 
 def create_bear_researcher(llm, memory):
     def bear_node(state) -> dict:
+        ticker = state["company_of_interest"]
         investment_debate_state = state["investment_debate_state"]
         history = investment_debate_state.get("history", "[]")
         bear_history = investment_debate_state.get("bear_history", "[]")
@@ -14,6 +16,39 @@ def create_bear_researcher(llm, memory):
         sentiment_report = state["sentiment_report"]
         news_report = state["news_report"]
         fundamentals_report = state["fundamentals_report"]
+
+        # Blackboard integration
+        blackboard_agent = create_agent_blackboard("BER_001", "BearResearcher")
+        
+        # Read recent analyst reports for context
+        recent_analyses = blackboard_agent.get_analysis_reports(ticker=ticker)
+        blackboard_context = ""
+        if recent_analyses:
+            blackboard_context += "\n\nRecent Analyst Reports on Blackboard:\n"
+            for analysis in recent_analyses[-3:]:  # Last 3 analyses
+                content = analysis.get('content', {})
+                analysis_data = content.get('analysis', {})
+                if isinstance(analysis_data, dict):
+                    blackboard_context += f"- {analysis['sender'].get('role', 'Unknown')}: {analysis_data.get('recommendation', 'N/A')} (Confidence: {analysis_data.get('confidence', 'N/A')})\n"
+
+        # Read full debate context for multi-round debates
+        debate_round = investment_debate_state["count"] + 1
+        recent_debate = blackboard_agent.get_debate_comments(topic=f"{ticker} Investment Debate")
+        debate_context = ""
+        if recent_debate:
+            debate_context += f"\n\nDEBATE ROUND {debate_round} - Previous Debate Context:\n"
+            for comment in recent_debate[-4:]:  # Last 4 comments for context
+                content = comment.get('content', {})
+                debate_context += f"- {comment['sender'].get('role', 'Unknown')}: {content.get('position', 'N/A')} - {content.get('argument', 'N/A')[:200]}...\n"
+
+        # Read research arguments for context
+        research_args = blackboard_agent.get_research_arguments(ticker=ticker)
+        research_context = ""
+        if research_args:
+            research_context += f"\n\nPrevious Research Arguments:\n"
+            for arg in research_args[-2:]:  # Last 2 arguments
+                content = arg.get('content', {})
+                research_context += f"- {arg['sender'].get('role', 'Unknown')}: {content.get('position', 'N/A')} - {content.get('argument', 'N/A')[:150]}...\n"
 
         curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
         past_memories = memory.get_memories(curr_situation, n_matches=2)
@@ -43,63 +78,110 @@ def create_bear_researcher(llm, memory):
     }, ...]
 }"""
 
-        prompt = f"""You are a Bear Analyst making the case against investing in the stock. Your goal is to present a well-reasoned argument emphasizing risks, challenges, and negative indicators. Leverage the provided research and data to highlight potential downsides and counter bullish arguments effectively.
+        prompt = f"""You are a Bear Analyst advocating against investing in the stock. Your task is to build a strong, evidence-based case emphasizing risks, challenges, and negative market indicators. Leverage the provided research and data to address concerns and counter bullish arguments effectively.
 
-Key points to focus on:
+DEBATE ROUND {debate_round}: This is round {debate_round} of the debate. If this is round 1, provide your initial bearish argument. If this is a later round, build upon your previous arguments and directly address the bull analyst's counter-arguments from the previous round.
 
-- Risks and Challenges: Highlight factors like market saturation, financial instability, or macroeconomic threats that could hinder the stock's performance.
-- Competitive Weaknesses: Emphasize vulnerabilities such as weaker market positioning, declining innovation, or threats from competitors.
-- Negative Indicators: Use evidence from financial data, market trends, or recent adverse news to support your position.
-- Bull Counterpoints: Critically analyze the bull argument with specific data and sound reasoning, exposing weaknesses or over-optimistic assumptions. Cite which resource you got the information from or whether it's a basic economic principle.
-- Engagement: Present your argument in a conversational style, directly engaging with the bull analyst's points and debating effectively rather than simply listing facts.
+{blackboard_context}
+{debate_context}
+{research_context}
 
-Resources available:
+Current Market Situation:
+{curr_situation}
 
-Market research report: {market_research_report}
-Social media sentiment report: {sentiment_report}
-Latest world affairs news: {news_report}
-Company fundamentals report: {fundamentals_report}
-Conversation history of the debate: {history}
-Last bull argument: {current_response}
-Reflections from similar situations and lessons learned: {past_memory_str}
-Use this information to deliver a compelling bear argument, refute the bull's claims, and engage in a dynamic debate that demonstrates the risks and weaknesses of investing in the stock. You must also address reflections and learn from lessons and mistakes you made in the past.
+Past Memories and Lessons:
+{past_memory_str}
 
-Respond ONLY with a valid JSON object in the following format:
-{json_format}
-The content of the arguments should be a detailed explanation of the argument, including data and reasoning. The risks should outline potential downsides or threats to the investment. The counterpoints should address specific claims made by the bull analyst, providing a rebuttal with supporting evidence.
-Source indicates where the information was obtained from, such as a specific report or data source.
-Confidence indicates the level of certainty in the argument presented from a scale from 1 to 100
-"""
+Your task is to:
+1. Analyze the current market data and research reports
+2. Build a compelling bearish case for {ticker}
+3. Address any bullish concerns raised in previous debate rounds
+4. Provide specific evidence and reasoning
+5. Consider the debate context and previous arguments
+6. Maintain a critical but balanced tone
+
+Focus on:
+- Risks and challenges analysis
+- Competitive weaknesses identification
+- Negative market indicators and trends
+- Counter-arguments to bullish claims
+- Specific evidence from the provided data
+
+Provide a comprehensive analysis that builds upon previous rounds and directly addresses the ongoing debate."""
+
         response = llm.invoke(prompt)
 
-        # Parse the JSON from the LLM response
-        argument_json = {}
-        try:
-            argument_json = json.loads(response.content)
-        except Exception:
-            pass
+        # Extract confidence from response
+        confidence = "Medium"
+        response_text = response.content.upper()
+        if "HIGH" in response_text and "CONFIDENCE" in response_text:
+            confidence = "High"
+        elif "LOW" in response_text and "CONFIDENCE" in response_text:
+            confidence = "Low"
 
-        # Parse History and append the new argument
-        try:
-            history_list = json.loads(history)
-        except Exception:
-            history_list = []
-        history_list.append(argument_json)
-        new_history = json.dumps(history_list)
+        # Extract evidence sources from response
+        evidence_sources = []
+        if "RISK" in response_text:
+            evidence_sources.append("Risk Analysis")
+        if "FUNDAMENTAL" in response_text:
+            evidence_sources.append("Fundamental Analysis")
+        if "TECHNICAL" in response_text:
+            evidence_sources.append("Technical Analysis")
+        if "NEWS" in response_text:
+            evidence_sources.append("News Analysis")
+        if "SENTIMENT" in response_text:
+            evidence_sources.append("Sentiment Analysis")
+        if not evidence_sources:
+            evidence_sources = ["Market Analysis"]
 
-        # Parse Bear History and append the new argument
-        try:
-            bear_history_list = json.loads(bear_history)
-        except Exception:
-            bear_history_list = []
-        bear_history_list.append(argument_json)
-        new_bear_history = json.dumps(bear_history_list)
+        # Determine reply_to for threading
+        reply_to = None
+        if recent_debate:
+            # Reply to the last bull comment if it exists
+            bull_comments = [c for c in recent_debate if c.get('content', {}).get('position') == 'Bullish']
+            if bull_comments:
+                reply_to = bull_comments[-1].get('message_id')
+
+        # Post debate comment to blackboard
+        blackboard_agent.post_debate_comment(
+            topic=f"{ticker} Investment Debate",
+            position="Bearish",
+            argument=response.content,
+            reply_to=reply_to
+        )
+
+        # Post research argument to blackboard
+        blackboard_agent.post_research_argument(
+            ticker=ticker,
+            position="Bearish",
+            argument=response.content,
+            confidence=confidence,
+            evidence_sources=evidence_sources,
+            reply_to=reply_to
+        )
+
+        # Post research summary
+        key_points = [
+            "Risks and challenges analysis",
+            "Competitive weaknesses identification",
+            "Negative market indicators",
+            "Counter-arguments to bullish claims"
+        ]
+        blackboard_agent.post_research_summary(
+            ticker=ticker,
+            position="Bearish",
+            key_points=key_points,
+            conclusion=f"Bearish case for {ticker} based on risks and negative indicators.",
+            confidence=confidence
+        )
+
+        argument = f"Bear Analyst: {response.content}"
 
         new_investment_debate_state = {
-            "history": new_history,
-            "bear_history": new_bear_history,
-            "bull_history": investment_debate_state.get("bull_history", "[]"),
-            "current_response": argument_json,
+            "history": history + "\n" + argument,
+            "bear_history": bear_history + "\n" + argument,
+            "bull_history": investment_debate_state.get("bull_history", ""),
+            "current_response": argument,
             "count": investment_debate_state["count"] + 1,
         }
 
