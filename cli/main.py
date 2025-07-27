@@ -19,6 +19,11 @@ from rich.tree import Tree
 from rich import box
 from rich.align import Align
 from rich.rule import Rule
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
@@ -870,208 +875,208 @@ def run_analysis():
                         else:
                             message_buffer.add_tool_call(tool_call.name, tool_call.args)
 
-                # Update reports and agent status based on chunk content
-                # Analyst Team Reports
-                if "market_report" in chunk and chunk["market_report"]:
-                    message_buffer.update_report_section(
-                        "market_report", chunk["market_report"]
-                    )
-                    message_buffer.update_agent_status("Market Analyst", "completed")
-                    # Set next analyst to in_progress
-                    if "social" in selections["analysts"]:
-                        message_buffer.update_agent_status(
-                            "Social Analyst", "in_progress"
-                        )
-
-                if "sentiment_report" in chunk and chunk["sentiment_report"]:
-                    message_buffer.update_report_section(
-                        "sentiment_report", chunk["sentiment_report"]
-                    )
-                    message_buffer.update_agent_status("Social Analyst", "completed")
-                    # Set next analyst to in_progress
-                    if "news" in selections["analysts"]:
-                        message_buffer.update_agent_status(
-                            "News Analyst", "in_progress"
-                        )
-
-                if "news_report" in chunk and chunk["news_report"]:
-                    message_buffer.update_report_section(
-                        "news_report", chunk["news_report"]
-                    )
-                    message_buffer.update_agent_status("News Analyst", "completed")
-                    # Set next analyst to in_progress
-                    if "fundamentals" in selections["analysts"]:
-                        message_buffer.update_agent_status(
-                            "Fundamentals Analyst", "in_progress"
-                        )
-
-                if "fundamentals_report" in chunk and chunk["fundamentals_report"]:
-                    message_buffer.update_report_section(
-                        "fundamentals_report", chunk["fundamentals_report"]
-                    )
+            # Update reports and agent status based on chunk content
+            # Analyst Team Reports
+            if "market_report" in chunk and chunk["market_report"]:
+                message_buffer.update_report_section(
+                    "market_report", chunk["market_report"]
+                )
+                message_buffer.update_agent_status("Market Analyst", "completed")
+                # Set next analyst to in_progress
+                if "social" in selections["analysts"]:
                     message_buffer.update_agent_status(
-                        "Fundamentals Analyst", "completed"
+                        "Social Analyst", "in_progress"
                     )
-                    # Set all research team members to in_progress
+
+            if "sentiment_report" in chunk and chunk["sentiment_report"]:
+                message_buffer.update_report_section(
+                    "sentiment_report", chunk["sentiment_report"]
+                )
+                message_buffer.update_agent_status("Social Analyst", "completed")
+                # Set next analyst to in_progress
+                if "news" in selections["analysts"]:
+                    message_buffer.update_agent_status(
+                        "News Analyst", "in_progress"
+                    )
+
+            if "news_report" in chunk and chunk["news_report"]:
+                message_buffer.update_report_section(
+                    "news_report", chunk["news_report"]
+                )
+                message_buffer.update_agent_status("News Analyst", "completed")
+                # Set next analyst to in_progress
+                if "fundamentals" in selections["analysts"]:
+                    message_buffer.update_agent_status(
+                        "Fundamentals Analyst", "in_progress"
+                    )
+
+            if "fundamentals_report" in chunk and chunk["fundamentals_report"]:
+                message_buffer.update_report_section(
+                    "fundamentals_report", chunk["fundamentals_report"]
+                )
+                message_buffer.update_agent_status(
+                    "Fundamentals Analyst", "completed"
+                )
+                # Set all research team members to in_progress
+                update_research_team_status("in_progress")
+
+            # Research Team - Handle Investment Debate State
+            if (
+                "investment_debate_state" in chunk
+                and chunk["investment_debate_state"]
+            ):
+                debate_state = chunk["investment_debate_state"]
+
+                # Update Bull Researcher status and report
+                if "bull_history" in debate_state and debate_state["bull_history"]:
+                    # Keep all research team members in progress
                     update_research_team_status("in_progress")
-
-                # Research Team - Handle Investment Debate State
-                if (
-                    "investment_debate_state" in chunk
-                    and chunk["investment_debate_state"]
-                ):
-                    debate_state = chunk["investment_debate_state"]
-
-                    # Update Bull Researcher status and report
-                    if "bull_history" in debate_state and debate_state["bull_history"]:
-                        # Keep all research team members in progress
-                        update_research_team_status("in_progress")
-                        # Extract latest bull response
-                        bull_responses = debate_state["bull_history"].split("\n")
-                        latest_bull = bull_responses[-1] if bull_responses else ""
-                        if latest_bull:
-                            message_buffer.add_message("Reasoning", latest_bull)
-                            # Update research report with bull's latest analysis
-                            message_buffer.update_report_section(
-                                "investment_plan",
-                                f"### Bull Researcher Analysis\n{latest_bull}",
-                            )
-
-                    # Update Bear Researcher status and report
-                    if "bear_history" in debate_state and debate_state["bear_history"]:
-                        # Keep all research team members in progress
-                        update_research_team_status("in_progress")
-                        # Extract latest bear response
-                        bear_responses = debate_state["bear_history"].split("\n")
-                        latest_bear = bear_responses[-1] if bear_responses else ""
-                        if latest_bear:
-                            message_buffer.add_message("Reasoning", latest_bear)
-                            # Update research report with bear's latest analysis
-                            message_buffer.update_report_section(
-                                "investment_plan",
-                                f"{message_buffer.report_sections['investment_plan']}\n\n### Bear Researcher Analysis\n{latest_bear}",
-                            )
-
-                    # Update Research Manager status and final decision
-                    if (
-                        "judge_decision" in debate_state
-                        and debate_state["judge_decision"]
-                    ):
-                        # Keep all research team members in progress until final decision
-                        update_research_team_status("in_progress")
-                        message_buffer.add_message(
-                            "Reasoning",
-                            f"Research Manager: {debate_state['judge_decision']}",
-                        )
-                        # Update research report with final decision
+                    # Extract latest bull response
+                    bull_responses = debate_state["bull_history"].split("\n")
+                    latest_bull = bull_responses[-1] if bull_responses else ""
+                    if latest_bull:
+                        message_buffer.add_message("Reasoning", latest_bull)
+                        # Update research report with bull's latest analysis
                         message_buffer.update_report_section(
                             "investment_plan",
-                            f"{message_buffer.report_sections['investment_plan']}\n\n### Research Manager Decision\n{debate_state['judge_decision']}",
-                        )
-                        # Mark all research team members as completed
-                        update_research_team_status("completed")
-                        # Set first risk analyst to in_progress
-                        message_buffer.update_agent_status(
-                            "Risky Analyst", "in_progress"
+                            f"### Bull Researcher Analysis\n{latest_bull}",
                         )
 
-                # Trading Team
+                # Update Bear Researcher status and report
+                if "bear_history" in debate_state and debate_state["bear_history"]:
+                    # Keep all research team members in progress
+                    update_research_team_status("in_progress")
+                    # Extract latest bear response
+                    bear_responses = debate_state["bear_history"].split("\n")
+                    latest_bear = bear_responses[-1] if bear_responses else ""
+                    if latest_bear:
+                        message_buffer.add_message("Reasoning", latest_bear)
+                        # Update research report with bear's latest analysis
+                        message_buffer.update_report_section(
+                            "investment_plan",
+                            f"{message_buffer.report_sections['investment_plan']}\n\n### Bear Researcher Analysis\n{latest_bear}",
+                        )
+
+                # Update Research Manager status and final decision
                 if (
-                    "trader_investment_plan" in chunk
-                    and chunk["trader_investment_plan"]
+                    "judge_decision" in debate_state
+                    and debate_state["judge_decision"]
                 ):
-                    message_buffer.update_report_section(
-                        "trader_investment_plan", chunk["trader_investment_plan"]
+                    # Keep all research team members in progress until final decision
+                    update_research_team_status("in_progress")
+                    message_buffer.add_message(
+                        "Reasoning",
+                        f"Research Manager: {debate_state['judge_decision']}",
                     )
+                    # Update research report with final decision
+                    message_buffer.update_report_section(
+                        "investment_plan",
+                        f"{message_buffer.report_sections['investment_plan']}\n\n### Research Manager Decision\n{debate_state['judge_decision']}",
+                    )
+                    # Mark all research team members as completed
+                    update_research_team_status("completed")
                     # Set first risk analyst to in_progress
-                    message_buffer.update_agent_status("Risky Analyst", "in_progress")
+                    message_buffer.update_agent_status(
+                        "Risky Analyst", "in_progress"
+                    )
 
-                # Risk Management Team - Handle Risk Debate State
-                if "risk_debate_state" in chunk and chunk["risk_debate_state"]:
-                    risk_state = chunk["risk_debate_state"]
+            # Trading Team
+            if (
+                "trader_investment_plan" in chunk
+                and chunk["trader_investment_plan"]
+            ):
+                message_buffer.update_report_section(
+                    "trader_investment_plan", chunk["trader_investment_plan"]
+                )
+                # Set first risk analyst to in_progress
+                message_buffer.update_agent_status("Risky Analyst", "in_progress")
 
-                    # Update Risky Analyst status and report
-                    if (
-                        "current_risky_response" in risk_state
-                        and risk_state["current_risky_response"]
-                    ):
-                        message_buffer.update_agent_status(
-                            "Risky Analyst", "in_progress"
-                        )
-                        message_buffer.add_message(
-                            "Reasoning",
-                            f"Risky Analyst: {risk_state['current_risky_response']}",
-                        )
-                        # Update risk report with risky analyst's latest analysis only
-                        message_buffer.update_report_section(
-                            "final_trade_decision",
-                            f"### Risky Analyst Analysis\n{risk_state['current_risky_response']}",
-                        )
+            # Risk Management Team - Handle Risk Debate State
+            if "risk_debate_state" in chunk and chunk["risk_debate_state"]:
+                risk_state = chunk["risk_debate_state"]
 
-                    # Update Safe Analyst status and report
-                    if (
-                        "current_safe_response" in risk_state
-                        and risk_state["current_safe_response"]
-                    ):
-                        message_buffer.update_agent_status(
-                            "Safe Analyst", "in_progress"
-                        )
-                        message_buffer.add_message(
-                            "Reasoning",
-                            f"Safe Analyst: {risk_state['current_safe_response']}",
-                        )
-                        # Update risk report with safe analyst's latest analysis only
-                        message_buffer.update_report_section(
-                            "final_trade_decision",
-                            f"### Safe Analyst Analysis\n{risk_state['current_safe_response']}",
-                        )
+                # Update Risky Analyst status and report
+                if (
+                    "current_risky_response" in risk_state
+                    and risk_state["current_risky_response"]
+                ):
+                    message_buffer.update_agent_status(
+                        "Risky Analyst", "in_progress"
+                    )
+                    message_buffer.add_message(
+                        "Reasoning",
+                        f"Risky Analyst: {risk_state['current_risky_response']}",
+                    )
+                    # Update risk report with risky analyst's latest analysis only
+                    message_buffer.update_report_section(
+                        "final_trade_decision",
+                        f"### Risky Analyst Analysis\n{risk_state['current_risky_response']}",
+                    )
 
-                    # Update Neutral Analyst status and report
-                    if (
-                        "current_neutral_response" in risk_state
-                        and risk_state["current_neutral_response"]
-                    ):
-                        message_buffer.update_agent_status(
-                            "Neutral Analyst", "in_progress"
-                        )
-                        message_buffer.add_message(
-                            "Reasoning",
-                            f"Neutral Analyst: {risk_state['current_neutral_response']}",
-                        )
-                        # Update risk report with neutral analyst's latest analysis only
-                        message_buffer.update_report_section(
-                            "final_trade_decision",
-                            f"### Neutral Analyst Analysis\n{risk_state['current_neutral_response']}",
-                        )
+                # Update Safe Analyst status and report
+                if (
+                    "current_safe_response" in risk_state
+                    and risk_state["current_safe_response"]
+                ):
+                    message_buffer.update_agent_status(
+                        "Safe Analyst", "in_progress"
+                    )
+                    message_buffer.add_message(
+                        "Reasoning",
+                        f"Safe Analyst: {risk_state['current_safe_response']}",
+                    )
+                    # Update risk report with safe analyst's latest analysis only
+                    message_buffer.update_report_section(
+                        "final_trade_decision",
+                        f"### Safe Analyst Analysis\n{risk_state['current_safe_response']}",
+                    )
 
-                    # Update Portfolio Manager status and final decision
-                    if "judge_decision" in risk_state and risk_state["judge_decision"]:
-                        message_buffer.update_agent_status(
-                            "Portfolio Manager", "in_progress"
-                        )
-                        message_buffer.add_message(
-                            "Reasoning",
-                            f"Portfolio Manager: {risk_state['judge_decision']}",
-                        )
-                        # Update risk report with final decision only
-                        message_buffer.update_report_section(
-                            "final_trade_decision",
-                            f"### Portfolio Manager Decision\n{risk_state['judge_decision']}",
-                        )
-                        # Mark risk analysts as completed
-                        message_buffer.update_agent_status("Risky Analyst", "completed")
-                        message_buffer.update_agent_status("Safe Analyst", "completed")
-                        message_buffer.update_agent_status(
-                            "Neutral Analyst", "completed"
-                        )
-                        message_buffer.update_agent_status(
-                            "Portfolio Manager", "completed"
-                        )
+                # Update Neutral Analyst status and report
+                if (
+                    "current_neutral_response" in risk_state
+                    and risk_state["current_neutral_response"]
+                ):
+                    message_buffer.update_agent_status(
+                        "Neutral Analyst", "in_progress"
+                    )
+                    message_buffer.add_message(
+                        "Reasoning",
+                        f"Neutral Analyst: {risk_state['current_neutral_response']}",
+                    )
+                    # Update risk report with neutral analyst's latest analysis only
+                    message_buffer.update_report_section(
+                        "final_trade_decision",
+                        f"### Neutral Analyst Analysis\n{risk_state['current_neutral_response']}",
+                    )
 
-                # Update the display
-                update_display(layout)
+                # Update Portfolio Manager status and final decision
+                if "judge_decision" in risk_state and risk_state["judge_decision"]:
+                    message_buffer.update_agent_status(
+                        "Portfolio Manager", "in_progress"
+                    )
+                    message_buffer.add_message(
+                        "Reasoning",
+                        f"Portfolio Manager: {risk_state['judge_decision']}",
+                    )
+                    # Update risk report with final decision only
+                    message_buffer.update_report_section(
+                        "final_trade_decision",
+                        f"### Portfolio Manager Decision\n{risk_state['judge_decision']}",
+                    )
+                    # Mark risk analysts as completed
+                    message_buffer.update_agent_status("Risky Analyst", "completed")
+                    message_buffer.update_agent_status("Safe Analyst", "completed")
+                    message_buffer.update_agent_status(
+                        "Neutral Analyst", "completed"
+                    )
+                    message_buffer.update_agent_status(
+                        "Portfolio Manager", "completed"
+                    )
 
-            trace.append(chunk)
+            # Update the display
+            update_display(layout)
+
+        trace.append(chunk)
 
         # Get final state and decision
         final_state = trace[-1]

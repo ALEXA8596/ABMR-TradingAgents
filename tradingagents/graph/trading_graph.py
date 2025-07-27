@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 import json
-from datetime import date
+from datetime import date, datetime
 from typing import Dict, Any, Tuple, List, Optional
 
 from langchain_openai import ChatOpenAI
@@ -28,9 +28,13 @@ from .propagation import Propagator
 from .reflection import Reflector
 from .signal_processing import SignalProcessor
 
+# Import blackboard utilities
+from tradingagents.blackboard.utils import create_agent_blackboard
+from tradingagents.blackboard.storage import clear_blackboard
+
 
 class TradingAgentsGraph:
-    """Main class that orchestrates the trading agents framework."""
+    """Main class that orchestrates the trading agents framework with blackboard integration."""
 
     def __init__(
         self,
@@ -62,8 +66,8 @@ class TradingAgentsGraph:
             self.deep_thinking_llm = ChatOpenAI(model=self.config["deep_think_llm"], base_url=self.config["backend_url"])
             self.quick_thinking_llm = ChatOpenAI(model=self.config["quick_think_llm"], base_url=self.config["backend_url"])
         elif self.config["llm_provider"].lower() == "anthropic":
-            self.deep_thinking_llm = ChatAnthropic(model=self.config["deep_think_llm"], base_url=self.config["backend_url"]) # type: ignore
-            self.quick_thinking_llm = ChatAnthropic(model=self.config["quick_think_llm"], base_url=self.config["backend_url"]) # type: ignore
+            self.deep_thinking_llm = ChatAnthropic(model=self.config["deep_think_llm"], base_url=self.config["backend_url"])
+            self.quick_thinking_llm = ChatAnthropic(model=self.config["quick_think_llm"], base_url=self.config["backend_url"])
         elif self.config["llm_provider"].lower() == "google":
             self.deep_thinking_llm = ChatGoogleGenerativeAI(model=self.config["deep_think_llm"])
             self.quick_thinking_llm = ChatGoogleGenerativeAI(model=self.config["quick_think_llm"])
@@ -83,7 +87,11 @@ class TradingAgentsGraph:
         self.tool_nodes = self._create_tool_nodes()
 
         # Initialize components
-        self.conditional_logic = ConditionalLogic()
+        self.conditional_logic = ConditionalLogic(
+            max_debate_rounds=self.config.get("max_debate_rounds", 1),
+            max_risk_discuss_rounds=self.config.get("max_risk_discuss_rounds", 1)
+        )
+        print(f"[DEBUG] TradingAgentsGraph: max_debate_rounds={self.config.get('max_debate_rounds')}, max_risk_discuss_rounds={self.config.get('max_risk_discuss_rounds')}")
         self.graph_setup = GraphSetup(
             self.quick_thinking_llm, # type: ignore
             self.deep_thinking_llm, # type: ignore
@@ -108,6 +116,44 @@ class TradingAgentsGraph:
 
         # Set up the graph
         self.graph = self.graph_setup.setup_graph(selected_analysts)
+        
+        # Initialize blackboard for the trading session
+        self._initialize_blackboard()
+
+    def _initialize_blackboard(self):
+        """Initialize the blackboard system for this trading session."""
+        if self.debug:
+            print("🔄 Initializing blackboard system...")
+        
+        # Clear any existing messages for a fresh start
+        clear_blackboard()
+        
+        # Create blackboard agents for all agent types
+        self.blackboard_agents = {
+            "analysts": {
+                "market": create_agent_blackboard("MA_001", "MarketAnalyst"),
+                "social": create_agent_blackboard("SMA_001", "SocialMediaAnalyst"),
+                "news": create_agent_blackboard("NA_001", "NewsAnalyst"),
+                "fundamentals": create_agent_blackboard("FA_001", "FundamentalAnalyst"),
+            },
+            "managers": {
+                "research": create_agent_blackboard("RM_001", "ResearchManager"),
+                "risk": create_agent_blackboard("RKM_001", "RiskManager"),
+            },
+            "researchers": {
+                "bull": create_agent_blackboard("BR_001", "BullResearcher"),
+                "bear": create_agent_blackboard("BER_001", "BearResearcher"),
+            },
+            "risk_managers": {
+                "aggressive": create_agent_blackboard("ARD_001", "AggressiveRiskManager"),
+                "conservative": create_agent_blackboard("CRD_001", "ConservativeRiskManager"),
+                "neutral": create_agent_blackboard("NRD_001", "NeutralRiskManager"),
+            },
+            "trader": create_agent_blackboard("TR_001", "Trader"),
+        }
+        
+        if self.debug:
+            print("✅ Blackboard system initialized")
 
     def _create_tool_nodes(self) -> Dict[str, ToolNode]:
         """Create tool nodes for different data sources."""
@@ -154,101 +200,127 @@ class TradingAgentsGraph:
             ),
         }
 
-    def propagate(self, company_name, trade_date):
-        """Run the trading agents graph for a company on a specific date."""
-
-        self.ticker = company_name
-
-        # Initialize state
-        init_agent_state = self.propagator.create_initial_state(
-            company_name, trade_date
-        )
-        args = self.propagator.get_graph_args()
-
+    def propagate(self, ticker: str, date: str) -> Tuple[Dict[str, Any], str]:
+        """
+        Propagate through the trading agents graph with blackboard integration.
+        
+        Args:
+            ticker: Stock ticker symbol
+            date: Analysis date
+            
+        Returns:
+            Tuple of (final_state, final_decision)
+        """
         if self.debug:
-            # Debug mode with tracing
-            trace = []
-            for chunk in self.graph.stream(init_agent_state, **args): # type: ignore
-                if len(chunk["messages"]) == 0:
-                    pass
-                else:
+            print(f"🚀 Starting propagation for {ticker} on {date}")
+            print(f"📊 Using blackboard system for multi-agent coordination")
+        
+        # Store ticker for blackboard context
+        self.ticker = ticker
+        
+        # Initialize state
+        init_agent_state = self.propagator.create_initial_state(ticker, date)
+        args = self.propagator.get_graph_args()
+        
+        # Stream the analysis with blackboard integration
+        trace = []
+        for chunk in self.graph.stream(init_agent_state, **args):
+            if len(chunk["messages"]) > 0:
+                # Process messages and update blackboard as needed
+                self._process_chunk_for_blackboard(chunk, ticker)
+                if self.debug:
                     chunk["messages"][-1].pretty_print()
-                    trace.append(chunk)
+            
+            trace.append(chunk)
+        
+        # Get final state and decision
+        final_state = trace[-1] if trace else init_agent_state
+        final_decision = self._extract_final_decision(final_state)
+        
+        if self.debug:
+            print(f"✅ Propagation completed for {ticker}")
+            print(f"📋 Final decision: {final_decision}")
+        
+        return final_state, final_decision
 
-            final_state = trace[-1]
-        else:
-            # Standard mode without tracing
-            final_state = self.graph.invoke(init_agent_state, **args) # type: ignore
+    def _process_chunk_for_blackboard(self, chunk: Dict[str, Any], ticker: str):
+        """Process a chunk of the graph execution and update blackboard accordingly."""
+        # This method would process the chunk and ensure relevant information
+        # is posted to the blackboard for other agents to access
+        # Implementation depends on your specific chunk structure
+        
+        # Example: If chunk contains analyst reports, post them to blackboard
+        if "market_report" in chunk and chunk["market_report"]:
+            self.blackboard_agents["analysts"]["market"].post_analysis_report(
+                ticker=ticker,
+                analysis={"report": chunk["market_report"]},
+                confidence="Medium"
+            )
+        
+        # Add more chunk processing logic as needed
 
-        # Store current state for reflection
-        self.curr_state = final_state
+    def _extract_final_decision(self, final_state: Dict[str, Any]) -> str:
+        """Extract the final trading decision from the state."""
+        # Implementation depends on your state structure
+        # This is a placeholder - implement based on your actual state format
+        return final_state.get("trader_investment_plan", "No decision made")
 
-        # Log state
-        self._log_state(trade_date, final_state)
+    def get_blackboard_context(self, ticker: str) -> Dict[str, Any]:
+        """
+        Get comprehensive blackboard context for a ticker.
+        
+        Args:
+            ticker: Stock ticker symbol
+            
+        Returns:
+            Dictionary containing all relevant context from the blackboard
+        """
+        return self.blackboard_agents["trader"].get_comprehensive_trade_context(ticker)
 
-        # Return decision and processed signal
-        return final_state, self.process_signal(final_state["final_trade_decision"])
+    def get_blackboard_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about the blackboard usage.
+        
+        Returns:
+            Dictionary with blackboard statistics
+        """
+        from tradingagents.blackboard.storage import get_blackboard_stats
+        return get_blackboard_stats()
 
-    def _log_state(self, trade_date, final_state):
-        """Log the final state to a JSON file."""
-        self.log_states_dict[str(trade_date)] = {
-            "company_of_interest": final_state["company_of_interest"],
-            "trade_date": final_state["trade_date"],
-            "market_report": final_state["market_report"],
-            "sentiment_report": final_state["sentiment_report"],
-            "news_report": final_state["news_report"],
-            "fundamentals_report": final_state["fundamentals_report"],
-            "investment_debate_state": {
-                "bull_history": final_state["investment_debate_state"]["bull_history"],
-                "bear_history": final_state["investment_debate_state"]["bear_history"],
-                "history": final_state["investment_debate_state"]["history"],
-                "current_response": final_state["investment_debate_state"][
-                    "current_response"
-                ],
-                "judge_decision": final_state["investment_debate_state"][
-                    "judge_decision"
-                ],
-            },
-            "trader_investment_decision": final_state["trader_investment_plan"],
-            "risk_debate_state": {
-                "risky_history": final_state["risk_debate_state"]["risky_history"],
-                "safe_history": final_state["risk_debate_state"]["safe_history"],
-                "neutral_history": final_state["risk_debate_state"]["neutral_history"],
-                "history": final_state["risk_debate_state"]["history"],
-                "judge_decision": final_state["risk_debate_state"]["judge_decision"],
-            },
-            "investment_plan": final_state["investment_plan"],
-            "final_trade_decision": final_state["final_trade_decision"],
-        }
+    def clear_blackboard(self):
+        """Clear the blackboard for a fresh start."""
+        clear_blackboard()
+        if self.debug:
+            print("🧹 Blackboard cleared")
 
-        # Save to file
-        directory = Path(f"eval_results/{self.ticker}/TradingAgentsStrategy_logs/")
-        directory.mkdir(parents=True, exist_ok=True)
-
-        with open(
-            f"eval_results/{self.ticker}/TradingAgentsStrategy_logs/full_states_log_{trade_date}.json",
-            "w",
-        ) as f:
-            json.dump(self.log_states_dict, f, indent=4)
-
-    def reflect_and_remember(self, returns_losses):
-        """Reflect on decisions and update memory based on returns."""
-        self.reflector.reflect_bull_researcher(
-            self.curr_state, returns_losses, self.bull_memory
-        )
-        self.reflector.reflect_bear_researcher(
-            self.curr_state, returns_losses, self.bear_memory
-        )
-        self.reflector.reflect_trader(
-            self.curr_state, returns_losses, self.trader_memory
-        )
-        self.reflector.reflect_invest_judge(
-            self.curr_state, returns_losses, self.invest_judge_memory
-        )
-        self.reflector.reflect_risk_manager(
-            self.curr_state, returns_losses, self.risk_manager_memory
-        )
-
-    def process_signal(self, full_signal):
-        """Process a signal to extract the core decision."""
+    def process_signal(self, full_signal: str) -> str:
+        """
+        Process a full trading signal to extract the core decision.
+        
+        Args:
+            full_signal: Complete trading signal text
+            
+        Returns:
+            Extracted decision (BUY, SELL, or HOLD)
+        """
         return self.signal_processor.process_signal(full_signal)
+
+    def export_blackboard_data(self, filename: str = None):
+        """
+        Export blackboard data to a file.
+        
+        Args:
+            filename: Optional filename for export
+        """
+        if filename is None:
+            filename = f"blackboard_export_{self.ticker}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        
+        from tradingagents.blackboard.storage import read_messages
+        import json
+        
+        messages = read_messages()
+        with open(filename, 'w') as f:
+            json.dump(messages, f, indent=2)
+        
+        if self.debug:
+            print(f"📤 Blackboard data exported to {filename}")
