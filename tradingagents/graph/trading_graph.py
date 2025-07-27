@@ -82,6 +82,7 @@ class TradingAgentsGraph:
         self.trader_memory = FinancialSituationMemory("trader_memory", self.config)
         self.invest_judge_memory = FinancialSituationMemory("invest_judge_memory", self.config)
         self.risk_manager_memory = FinancialSituationMemory("risk_manager_memory", self.config)
+        self.portfolio_optimizer_memory = FinancialSituationMemory("portfolio_optimizer_memory", self.config)
 
         # Create tool nodes
         self.tool_nodes = self._create_tool_nodes()
@@ -102,6 +103,7 @@ class TradingAgentsGraph:
             self.trader_memory,
             self.invest_judge_memory,
             self.risk_manager_memory,
+            self.portfolio_optimizer_memory,
             self.conditional_logic,
         )
 

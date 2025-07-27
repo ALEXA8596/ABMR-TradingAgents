@@ -93,3 +93,11 @@ class ConditionalLogic:
         else:
             print("[DEBUG] Next: Neutral Analyst")
             return "Neutral Analyst"
+
+    def should_continue_portfolio_flow(self, state: AgentState) -> str:
+        """Determine if portfolio optimization flow should continue."""
+        # Check if portfolio optimization has been completed
+        if "portfolio_optimization_state" not in state or not state["portfolio_optimization_state"]:
+            return "Portfolio Optimizer"
+        else:
+            return "END"

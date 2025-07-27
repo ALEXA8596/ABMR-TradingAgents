@@ -26,6 +26,7 @@ class GraphSetup:
         trader_memory,
         invest_judge_memory,
         risk_manager_memory,
+        portfolio_optimizer_memory,
         conditional_logic: ConditionalLogic,
     ):
         """Initialize with required components."""
@@ -39,6 +40,7 @@ class GraphSetup:
         self.invest_judge_memory = invest_judge_memory
         self.risk_manager_memory = risk_manager_memory
         self.conditional_logic = conditional_logic
+        self.portfolio_optimizer_memory = portfolio_optimizer_memory
 
     def setup_graph(
         self, selected_analysts=["market", "social", "news", "fundamentals"]
@@ -119,6 +121,11 @@ class GraphSetup:
             self.deep_thinking_llm, self.risk_manager_memory
         )
 
+        # Portfolio optimizer node
+        portfolio_optimizer_node = create_portfolio_optimizer(
+            self.deep_thinking_llm, self.portfolio_optimizer_memory
+        )
+
         # Create workflow
         workflow = StateGraph(AgentState)
 
@@ -141,6 +148,7 @@ class GraphSetup:
         workflow.add_node("Neutral Analyst", neutral_analyst)
         workflow.add_node("Safe Analyst", safe_analyst)
         workflow.add_node("Risk Judge", risk_manager_node)
+        workflow.add_node("Portfolio Optimizer", portfolio_optimizer_node)
 
         # Define edges
         # Start with the first analyst
@@ -236,7 +244,15 @@ class GraphSetup:
             },
         )
 
-        workflow.add_edge("Risk Judge", END)
+        workflow.add_conditional_edges(
+            "Risk Judge",
+            self.conditional_logic.should_continue_portfolio_flow,
+            {
+                "Portfolio Optimizer": "Portfolio Optimizer",
+                "END": END,
+            },
+        )
+        workflow.add_edge("Portfolio Optimizer", "Risk Judge")
 
         # Compile and return
         return workflow.compile()

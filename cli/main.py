@@ -19,7 +19,6 @@ from rich.tree import Tree
 from rich import box
 from rich.align import Align
 from rich.rule import Rule
-import os
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
