@@ -45,23 +45,29 @@ class ConditionalLogic:
 
     def should_continue_debate(self, state: AgentState) -> str:
         """Determine if debate should continue."""
-        print(f"[DEBUG] should_continue_debate: count={state['investment_debate_state']['count']}, max_debate_rounds={self.max_debate_rounds}")
-        # Check if we've reached the maximum number of rounds
-        if (
-            state["investment_debate_state"]["count"] >= 2 * self.max_debate_rounds
-        ):  # 2 rounds of back-and-forth between 2 agents
-            print("[DEBUG] Debate complete. Handing off to Research Manager.")
+
+        # 1 => Bullish Researcher
+        # 2 => Bearish Researcher
+        # 3 => Bullish Cross Examination Researcher
+        # 4 => Bearish Cross Examination Researcher
+        # 5 => Bullish Researcher
+        # 6 => Bearish Researcher
+        # 7 => Research Manager
+        # Repeat 3 to 7 as needed
+
+        count = state["investment_debate_state"]["count"]
+
+        if count >= 4 * self.max_debate_rounds:
             return "Research Manager"
-        
-        # Determine whose turn it is based on the count
-        # Even counts (0, 2, 4, 6, 8...) = Bull's turn
-        # Odd counts (1, 3, 5, 7, 9...) = Bear's turn
-        if state["investment_debate_state"]["count"] % 2 == 0:
-            print("[DEBUG] Next: Bull Researcher")
-            return "Bull Researcher"
-        else:
-            print("[DEBUG] Next: Bear Researcher")
-            return "Bear Researcher"
+
+        sequence = [
+            "Bull Researcher",
+            "Bear Researcher",
+            "Bull Cross Examination Researcher",
+            "Bear Cross Examination Researcher",
+        ]
+
+        return sequence[count % len(sequence)]
 
     def should_continue_risk_analysis(self, state: AgentState) -> str:
         """Determine if risk analysis should continue."""
