@@ -102,6 +102,15 @@ class GraphSetup:
             self.deep_thinking_llm, self.invest_judge_memory
         )
         
+        # Cross Ex Nodes
+        bull_crossex_researcher_node = create_bull_crossex_researcher(
+            self.deep_thinking_llm, self.bull_memory
+        )
+        
+        bear_crossex_researcher_node = create_bear_crossex_researcher(
+            self.deep_thinking_llm, self.bear_memory
+        )
+        
         trader_node = create_trader(self.quick_thinking_llm, self.trader_memory)
 
         # Create risk analysis nodes
@@ -131,6 +140,8 @@ class GraphSetup:
         # Add other nodes
         workflow.add_node("Bull Researcher", bull_researcher_node)
         workflow.add_node("Bear Researcher", bear_researcher_node)
+        workflow.add_node("Bull Cross Examination Researcher", bull_crossex_researcher_node)
+        workflow.add_node("Bear Cross Examination Researcher", bear_crossex_researcher_node)
         workflow.add_node("Research Manager", research_manager_node)
         workflow.add_node("Trader", trader_node)
         workflow.add_node("Risky Analyst", risky_analyst)
@@ -172,6 +183,8 @@ class GraphSetup:
             {
                 "Bear Researcher": "Bear Researcher",
                 "Research Manager": "Research Manager",
+                "Bull Cross Examination Researcher": "Bull Cross Examination Researcher",
+                "Bear Cross Examination Researcher": "Bear Cross Examination Researcher",
             },
         )
         workflow.add_conditional_edges(
@@ -180,6 +193,28 @@ class GraphSetup:
             {
                 "Bull Researcher": "Bull Researcher",
                 "Research Manager": "Research Manager",
+                "Bull Cross Examination Researcher": "Bull Cross Examination Researcher",
+                "Bear Cross Examination Researcher": "Bear Cross Examination Researcher",
+            },
+        )
+        workflow.add_conditional_edges(
+            "Bull Cross Examination Researcher",
+            self.conditional_logic.should_continue_debate,
+            {
+                "Bear Cross Examination Researcher": "Bear Cross Examination Researcher",
+                "Research Manager": "Research Manager",
+                "Bull Researcher": "Bull Researcher",
+                "Bear Researcher": "Bear Researcher",
+            },
+        )
+        workflow.add_conditional_edges(
+            "Bear Cross Examination Researcher",
+            self.conditional_logic.should_continue_debate,
+            {
+                "Bull Cross Examination Researcher": "Bull Cross Examination Researcher",
+                "Research Manager": "Research Manager",
+                "Bull Researcher": "Bull Researcher",
+                "Bear Researcher": "Bear Researcher",
             },
         )
         workflow.add_edge("Research Manager", "Trader")
