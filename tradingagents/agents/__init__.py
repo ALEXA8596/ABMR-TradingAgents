@@ -10,6 +10,10 @@ from .analysts.social_media_analyst import create_social_media_analyst
 from .researchers.bear_researcher import create_bear_researcher
 from .researchers.bull_researcher import create_bull_researcher
 
+# Cross Examination Agents
+from .researchers.bear_researcher_crossex import create_bear_crossex_researcher
+from .researchers.bull_researcher_crossex import create_bull_crossex_researcher
+
 from .risk_mgmt.aggresive_debator import create_risky_debator
 from .risk_mgmt.conservative_debator import create_safe_debator
 from .risk_mgmt.neutral_debator import create_neutral_debator
@@ -29,6 +33,8 @@ __all__ = [
     "RiskDebateState",
     "create_bear_researcher",
     "create_bull_researcher",
+    "create_bear_crossex_researcher",
+    "create_bull_crossex_researcher",
     "create_research_manager",
     "create_fundamentals_analyst",
     "create_market_analyst",
