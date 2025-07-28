@@ -1,0 +1,25 @@
+{
+  "cash": 150000,
+  "equity_positions": {
+    "AAPL": 500,
+    "MSFT": 300,
+    "GOOGL": 400,
+    "NVDA": 200,
+    "SPY": 150,
+    "QQQ": 100,
+    "JPM": 200,
+    "JNJ": 250
+  },
+  "crypto_positions": {
+    "BTC": 1.5,
+    "ETH": 15
+  },
+  "bond_positions": {
+    "TLT": 300,
+    "AGG": 400
+  },
+  "commodity_positions": {
+    "GLD": 200,
+    "USO": 150
+  }
+} 

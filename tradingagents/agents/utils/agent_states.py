@@ -1,10 +1,14 @@
-from typing import Annotated, Sequence
+from typing import Annotated, Sequence, Union
 from datetime import date, timedelta, datetime
 from typing_extensions import TypedDict, Optional
 from langchain_openai import ChatOpenAI
+from langchain_core.messages import BaseMessage
 from tradingagents.agents import *
 from langgraph.prebuilt import ToolNode
-from langgraph.graph import END, StateGraph, START, MessagesState
+from langgraph.graph import END, StateGraph, START, MessagesState, add_messages
+
+# Define AnyMessage type for LangGraph compatibility
+AnyMessage = Union[BaseMessage, dict, str]
 
 
 # Researcher team state
