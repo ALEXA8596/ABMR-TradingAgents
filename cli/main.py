@@ -62,6 +62,7 @@ class MessageBuffer:
             "Neutral Analyst": "pending",
             "Safe Analyst": "pending",
             # Portfolio Management Team
+            "Portfolio Optimizer": "pending",
             "Portfolio Manager": "pending",
         }
         self.current_agent = None
@@ -72,6 +73,7 @@ class MessageBuffer:
             "fundamentals_report": None,
             "investment_plan": None,
             "trader_investment_plan": None,
+            "portfolio_optimization": None,
             "final_trade_decision": None,
         }
 
@@ -162,6 +164,11 @@ class MessageBuffer:
         if self.report_sections["trader_investment_plan"]:
             report_parts.append("## Trading Team Plan")
             report_parts.append(f"{self.report_sections['trader_investment_plan']}")
+
+        # Portfolio Optimization
+        if self.report_sections["portfolio_optimization"]:
+            report_parts.append("## Portfolio Optimization & Trade Execution")
+            report_parts.append(f"{self.report_sections['portfolio_optimization']}")
 
         # Portfolio Management Decision
         if self.report_sections["final_trade_decision"]:
@@ -1047,6 +1054,36 @@ def run_analysis():
                         "final_trade_decision",
                         f"### Neutral Analyst Analysis\n{risk_state['current_neutral_response']}",
                     )
+
+            # Portfolio Optimization handling
+            if "portfolio_optimization_state" in chunk and chunk["portfolio_optimization_state"]:
+                portfolio_opt = chunk["portfolio_optimization_state"]
+                message_buffer.update_agent_status("Portfolio Optimizer", "in_progress")
+                
+                # Add portfolio optimization analysis message
+                analysis = portfolio_opt.get("analysis", "Portfolio optimization completed")
+                message_buffer.add_message(
+                    "Analysis",
+                    f"Portfolio Optimization: Multi-asset hedging strategy completed"
+                )
+                
+                # Add trade execution results if available
+                if "execution_summary" in portfolio_opt and portfolio_opt["execution_summary"]:
+                    message_buffer.add_message(
+                        "Trade Execution",
+                        f"🤖 ALPACA TRADE EXECUTION:\n{portfolio_opt['execution_summary']}"
+                    )
+                
+                # Update report with portfolio optimization
+                portfolio_section = f"### Portfolio Optimization Strategy\n{analysis}"
+                if "execution_summary" in portfolio_opt and portfolio_opt["execution_summary"]:
+                    portfolio_section += f"\n\n### Trade Execution Results\n{portfolio_opt['execution_summary']}"
+                
+                message_buffer.update_report_section(
+                    "portfolio_optimization",
+                    portfolio_section
+                )
+                message_buffer.update_agent_status("Portfolio Optimizer", "completed")
 
                 # Update Portfolio Manager status and final decision
                 if "judge_decision" in risk_state and risk_state["judge_decision"]:

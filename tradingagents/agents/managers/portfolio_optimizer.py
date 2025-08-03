@@ -10,6 +10,9 @@ from typing import Dict, List, Tuple
 import warnings
 warnings.filterwarnings('ignore')
 
+# Import Alpaca integration
+from tradingagents.dataflows.alpaca_utils import AlpacaPortfolioProvider, AlpacaTradeExecutor
+
 
 class FinnhubDataProvider:
     """Enterprise-grade Finnhub data provider for real-time market data"""
@@ -201,11 +204,39 @@ class PortfolioOptimizer:
         self.finnhub = FinnhubDataProvider()
         self.quant = QuantitativeAnalyzer(self.finnhub)
     
-    def load_portfolio_data(self) -> Dict:
-        """Load portfolio data from portfolio.json"""
+    def load_portfolio_data(self, use_live_data: bool = True) -> Dict:
+        """
+        Load portfolio data - either from live Alpaca account or static JSON file
+        
+        Args:
+            use_live_data: Whether to fetch live portfolio from Alpaca (default: True)
+        """
+        if use_live_data:
+            try:
+                print("🚀 Fetching LIVE portfolio data from Alpaca...")
+                alpaca_provider = AlpacaPortfolioProvider()
+                portfolio = alpaca_provider.get_live_portfolio()
+                
+                # Validate portfolio has meaningful data
+                has_cash = portfolio.get('cash', 0) > 0
+                has_positions = any(portfolio.get(key, {}) for key in ['equity_positions', 'crypto_positions', 'bond_positions', 'commodity_positions'])
+                
+                if has_cash or has_positions:
+                    print("✅ Successfully loaded LIVE portfolio from Alpaca")
+                    return portfolio
+                else:
+                    print("⚠️ Live portfolio appears empty, falling back to static file")
+                    
+            except Exception as e:
+                print(f"⚠️ Could not fetch live portfolio: {e}")
+                print("📁 Falling back to static portfolio file...")
+        
+        # Fallback to static portfolio.json
         try:
             with open('portfolio.json', 'r') as f:
-                return json.load(f)
+                portfolio = json.load(f)
+                print("📁 Loaded portfolio from portfolio.json")
+                return portfolio
         except FileNotFoundError:
             print("❌ portfolio.json file not found")
             return {}
@@ -946,8 +977,59 @@ Analysis based on historical data and current market conditions. Real-time price
                     "risk_adjustments": position_analysis['risk_adjustments'],
                     "optimization_method": position_analysis['optimization_method'],
                     "trade_direction": trade_direction
-                }
+                },
+                "trade_execution": {},  # Will be populated after execution
+                "execution_summary": ""  # Will be populated after execution
             }
         }
+        
+        # ENTERPRISE TRADE EXECUTION
+        print(f"\n🤖 INITIATING TRADE EXECUTION")
+        print("=" * 50)
+        
+        try:
+            # Initialize trade executor
+            trade_executor = AlpacaTradeExecutor()
+            
+            # Prepare recommendation data for execution
+            execution_recommendations = {
+                "symbol": company_name,
+                "trade_direction": trade_direction,
+                "recommended_position": position_analysis['recommended_position'],
+                "recommended_value": abs(position_analysis['recommended_position'] * target_price),
+                "analysis": analysis,
+                "quantitative_metrics": {
+                    "ensemble_weight": position_analysis['ensemble_weight'],
+                    "sharpe_ratio": position_analysis['risk_metrics']['sharpe_ratio'],
+                    "expected_return": position_analysis['risk_metrics']['expected_return'],
+                    "risk_adjustments": position_analysis['risk_adjustments']
+                }
+            }
+            
+            # Execute trades based on portfolio optimization
+            execution_results = trade_executor.execute_portfolio_recommendations(
+                execution_recommendations, 
+                portfolio_data
+            )
+            
+            # Update state with execution results
+            result["portfolio_optimization_state"]["trade_execution"] = execution_results
+            result["portfolio_optimization_state"]["execution_summary"] = execution_results.get("execution_summary", "")
+            
+            print(execution_results.get("execution_summary", ""))
+            
+            # Save execution results to file
+            execution_file = filename.parent / f"execution_results_{time_str}.json"
+            with open(execution_file, 'w') as f:
+                json.dump(execution_results, f, indent=2)
+            print(f"💾 Execution results saved: {execution_file}")
+            
+        except Exception as e:
+            error_msg = f"❌ Trade execution failed: {e}"
+            print(error_msg)
+            result["portfolio_optimization_state"]["trade_execution"] = {"error": str(e)}
+            result["portfolio_optimization_state"]["execution_summary"] = error_msg
+        
+        return result
 
     return portfolio_optimizer_node 
