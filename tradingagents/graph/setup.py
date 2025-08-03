@@ -123,7 +123,7 @@ class GraphSetup:
 
         # Portfolio optimizer node
         portfolio_optimizer_node = create_portfolio_optimizer(
-            self.deep_thinking_llm, self.portfolio_optimizer_memory
+            self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
         )
 
         # Create workflow
