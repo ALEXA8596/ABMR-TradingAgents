@@ -2,13 +2,14 @@ import time
 import json
 import os
 from datetime import datetime
+from tradingagents.blackboard.utils import create_agent_blackboard
 
 
-def create_portfolio_optimizer(llm, memory):
+def create_portfolio_optimizer(llm, memory, toolkit):
     def portfolio_optimizer_node(state) -> dict:
 
         company_name = state["company_of_interest"]
-
+        
         market_research_report = state["market_report"]
         news_report = state["news_report"]
         fundamentals_report = state["fundamentals_report"]
@@ -22,6 +23,36 @@ def create_portfolio_optimizer(llm, memory):
         past_memory_str = ""
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
+            
+        # Blackboard integration
+        blackboard_agent = create_agent_blackboard("FA_001", "FundamentalAnalyst")
+        # Read recent analysis reports for context
+        recent_analyses = blackboard_agent.get_analysis_reports(ticker=company_name)
+        blackboard_context = ""
+        if recent_analyses:
+            blackboard_context += "\n\nRecent Analysis Reports on Blackboard:\n"
+            for analysis in recent_analyses[-3:]:
+                content = analysis.get('content', {})
+                blackboard_context += f"- {analysis['sender'].get('role', 'Unknown')}: {content.get('recommendation', 'N/A')} (Confidence: {content.get('confidence', 'N/A')})\n"
+                
+        tools = [toolkit.get_portfolio_kelly_criterion,
+                 toolkit.get_portfolio_risk_parity,
+                 toolkit.get_portfolio_black_litterman,
+                 toolkit.get_portfolio_mean_reversion,
+                 toolkit.get_portfolio_momentum,
+                 toolkit.perform_stress_test,
+                 toolkit.calculate_beta,
+                 toolkit.design_hedging_strategy,
+                 # Todo
+                 # toolkit.analyze_asset_correlations,
+                 # toolkit.calculate_var_cvar,
+                 # toolkit.design_options_strategy,
+                 # toolkit.optimize_crypto_hedging,
+                 # toolkit.generate_futures_hedge_ratios,
+                 # toolkit.analyze_forex_exposure,
+                 # toolkit.calculate_commodity_hedge,
+                 # toolkit.generate_rebalancing_schedule
+                ]
 
         prompt = f"""As the Senior Quantitative Portfolio Manager, create a comprehensive institutional-grade portfolio optimization strategy for {company_name}. Your analysis must cover advanced hedging across ALL asset classes including crypto, options, futures, forex, and commodities.
 
