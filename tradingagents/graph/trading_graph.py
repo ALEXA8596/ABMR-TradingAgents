@@ -38,7 +38,7 @@ class TradingAgentsGraph:
 
     def __init__(
         self,
-        selected_analysts=["market", "social", "news", "fundamentals"],
+        selected_analysts=["market", "social", "news", "fundamentals", "macro"],
         debug=False,
         config: Dict[str, Any] = None, # type: ignore
     ):
@@ -137,6 +137,7 @@ class TradingAgentsGraph:
                 "social": create_agent_blackboard("SMA_001", "SocialMediaAnalyst"),
                 "news": create_agent_blackboard("NA_001", "NewsAnalyst"),
                 "fundamentals": create_agent_blackboard("FA_001", "FundamentalAnalyst"),
+                "macro": create_agent_blackboard("MEA_001", "MacroEconomicAnalyst"),
             },
             "managers": {
                 "research": create_agent_blackboard("RM_001", "ResearchManager"),
@@ -198,6 +199,16 @@ class TradingAgentsGraph:
                     self.toolkit.get_simfin_balance_sheet,
                     self.toolkit.get_simfin_cashflow,
                     self.toolkit.get_simfin_income_stmt,
+                ]
+            ),
+            "macro": ToolNode(
+                [
+                    # online tools
+                    self.toolkit.get_YFin_data_online,
+                    self.toolkit.get_stockstats_indicators_report_online,
+                    # offline tools
+                    self.toolkit.get_YFin_data,
+                    self.toolkit.get_stockstats_indicators_report,
                 ]
             ),
         }
