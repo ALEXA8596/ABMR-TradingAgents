@@ -71,20 +71,24 @@ Respond ONLY with a valid JSON object in the following format:
 """
         response = llm.invoke(prompt)
 
-        # Extract decision and confidence from response
+        # Prefer structured JSON decision; fallback to text heuristics
+        from tradingagents.agents.utils.agent_utils import parse_llm_json_response, normalize_confidence
+        parsed, err = parse_llm_json_response(response.content or "")
         decision = "Hold"
         confidence = "Medium"
-        response_text = response.content.upper()
-        
-        if "BUY" in response_text:
-            decision = "Buy"
-        elif "SELL" in response_text:
-            decision = "Sell"
-        
-        if "HIGH" in response_text and "CONFIDENCE" in response_text:
-            confidence = "High"
-        elif "LOW" in response_text and "CONFIDENCE" in response_text:
-            confidence = "Low"
+        if parsed:
+            decision = parsed.get("decision", decision).title()
+            confidence = normalize_confidence(parsed.get("confidence", confidence))
+        else:
+            response_text = (response.content or "").upper()
+            if "BUY" in response_text:
+                decision = "Buy"
+            elif "SELL" in response_text:
+                decision = "Sell"
+            if "HIGH" in response_text and "CONFIDENCE" in response_text:
+                confidence = "High"
+            elif "LOW" in response_text and "CONFIDENCE" in response_text:
+                confidence = "Low"
 
         # Post investment decision to blackboard
         blackboard_agent.post_investment_decision(

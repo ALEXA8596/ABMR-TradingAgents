@@ -91,28 +91,32 @@ Focus on actionable insights and continuous improvement. Build on past lessons, 
 
         response = llm.invoke(prompt)
 
-        # Extract decision, risk level, and confidence from response
+        # Prefer structured JSON; fallback to text heuristics
+        from tradingagents.agents.utils.agent_utils import parse_llm_json_response, normalize_confidence
+        parsed, err = parse_llm_json_response(response.content or "")
         decision = "Hold"
         risk_level = "Medium"
         confidence = "Medium"
-        response_text = response.content.upper()
-        
-        if "BUY" in response_text:
-            decision = "Buy"
-        elif "SELL" in response_text:
-            decision = "Sell"
-        
-        if "HIGH" in response_text and "RISK" in response_text:
-            risk_level = "High"
-        elif "LOW" in response_text and "RISK" in response_text:
-            risk_level = "Low"
-        elif "CRITICAL" in response_text:
-            risk_level = "Critical"
-        
-        if "HIGH" in response_text and "CONFIDENCE" in response_text:
-            confidence = "High"
-        elif "LOW" in response_text and "CONFIDENCE" in response_text:
-            confidence = "Low"
+        if parsed:
+            decision = parsed.get("decision", decision).title()
+            risk_level = parsed.get("risk_level", risk_level).title()
+            confidence = normalize_confidence(parsed.get("confidence", confidence))
+        else:
+            response_text = (response.content or "").upper()
+            if "BUY" in response_text:
+                decision = "Buy"
+            elif "SELL" in response_text:
+                decision = "Sell"
+            if "HIGH" in response_text and "RISK" in response_text:
+                risk_level = "High"
+            elif "LOW" in response_text and "RISK" in response_text:
+                risk_level = "Low"
+            elif "CRITICAL" in response_text:
+                risk_level = "Critical"
+            if "HIGH" in response_text and "CONFIDENCE" in response_text:
+                confidence = "High"
+            elif "LOW" in response_text and "CONFIDENCE" in response_text:
+                confidence = "Low"
 
         # Extract risk factors from response
         risk_factors = []

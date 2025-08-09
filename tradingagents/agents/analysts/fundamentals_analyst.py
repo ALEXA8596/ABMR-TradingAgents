@@ -84,23 +84,30 @@ def create_fundamentals_analyst(llm, toolkit):
             result.content = result.content.encode('utf-8', errors='replace').decode('utf-8')
 
         # Post the generated report to the blackboard
-        # Extract recommendation and confidence heuristically
-        recommendation = "Neutral"
-        confidence = "Medium"
-        if "BUY" in report.upper():
-            recommendation = "Bullish"
-        elif "SELL" in report.upper():
-            recommendation = "Bearish"
-        if "HIGH" in report.upper() and "CONFIDENCE" in report.upper():
-            confidence = "High"
-        elif "LOW" in report.upper() and "CONFIDENCE" in report.upper():
-            confidence = "Low"
-        analysis_content = {
-            "ticker": ticker,
-            "recommendation": recommendation,
-            "confidence": confidence,
-            "analysis": report
-        }
+        from tradingagents.agents.utils.agent_utils import parse_llm_json_response, normalize_confidence
+        parsed, err = parse_llm_json_response(result.content or "")
+        if parsed:
+            recommendation = parsed.get("recommendation", "Neutral")
+            confidence = normalize_confidence(parsed.get("confidence", "Medium"))
+            analysis_content = parsed
+        else:
+            # Extract recommendation and confidence heuristically
+            recommendation = "Neutral"
+            confidence = "Medium"
+            if "BUY" in report.upper():
+                recommendation = "Bullish"
+            elif "SELL" in report.upper():
+                recommendation = "Bearish"
+            if "HIGH" in report.upper() and "CONFIDENCE" in report.upper():
+                confidence = "High"
+            elif "LOW" in report.upper() and "CONFIDENCE" in report.upper():
+                confidence = "Low"
+            analysis_content = {
+                "ticker": ticker,
+                "recommendation": recommendation,
+                "confidence": confidence,
+                "analysis": report
+            }
         blackboard_agent.post_analysis_report(
             ticker=ticker,
             analysis=analysis_content,

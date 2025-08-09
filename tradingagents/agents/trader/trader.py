@@ -108,20 +108,26 @@ Consider all the insights from analysts, risk managers, research managers, and c
 
         result = llm.invoke(messages)
 
-        # Extract trade decision from response
-        response_text = result.content.upper()
+        # Prefer structured JSON for decision/confidence; fallback to text
+        from tradingagents.agents.utils.agent_utils import parse_llm_json_response, normalize_confidence
+        parsed, err = parse_llm_json_response(result.content or "")
         trade_action = "HOLD"
-        if "FINAL TRANSACTION PROPOSAL: **BUY**" in response_text:
-            trade_action = "BUY"
-        elif "FINAL TRANSACTION PROPOSAL: **SELL**" in response_text:
-            trade_action = "SELL"
-
-        # Extract confidence from response
         confidence = "Medium"
-        if "HIGH" in response_text and "CONFIDENCE" in response_text:
-            confidence = "High"
-        elif "LOW" in response_text and "CONFIDENCE" in response_text:
-            confidence = "Low"
+        if parsed:
+            action = (parsed.get("action") or parsed.get("decision") or "").upper()
+            if action in {"BUY","SELL","HOLD"}:
+                trade_action = action
+            confidence = normalize_confidence(parsed.get("confidence", confidence))
+        else:
+            response_text = (result.content or "").upper()
+            if "FINAL TRANSACTION PROPOSAL: **BUY**" in response_text:
+                trade_action = "BUY"
+            elif "FINAL TRANSACTION PROPOSAL: **SELL**" in response_text:
+                trade_action = "SELL"
+            if "HIGH" in response_text and "CONFIDENCE" in response_text:
+                confidence = "High"
+            elif "LOW" in response_text and "CONFIDENCE" in response_text:
+                confidence = "Low"
 
         # Post trade decision to blackboard
         blackboard_agent.post_trade_decision(

@@ -13,6 +13,9 @@ from langchain_openai import ChatOpenAI
 import tradingagents.dataflows.interface as interface
 from tradingagents.default_config import DEFAULT_CONFIG
 from langchain_core.messages import HumanMessage
+from typing import Any, Optional, Tuple
+import json
+import re
 
 
 def create_msg_delete():
@@ -417,3 +420,63 @@ class Toolkit:
         )
 
         return openai_fundamentals_results
+
+
+def _extract_fenced_json(text: str) -> Optional[str]:
+    """Return the first fenced JSON block if present, else None."""
+    if not isinstance(text, str):
+        return None
+    # ```json ... ``` or ``` ... ```
+    m = re.search(r"```json\s*(\{[\s\S]*?\})\s*```", text, re.IGNORECASE)
+    if m:
+        return m.group(1)
+    m = re.search(r"```\s*(\{[\s\S]*?\})\s*```", text, re.IGNORECASE)
+    if m:
+        return m.group(1)
+    return None
+
+
+def _try_parse_json(text: str) -> Optional[dict]:
+    """Attempt to parse a JSON object from text; return None on failure."""
+    try:
+        return json.loads(text)
+    except Exception:
+        return None
+
+
+def normalize_confidence(conf: Any) -> str:
+    """Normalize confidence to one of {Low, Medium, High}. Accepts numeric or string."""
+    if isinstance(conf, (int, float)):
+        if conf >= 80:
+            return "High"
+        if conf >= 50:
+            return "Medium"
+        return "Low"
+    s = str(conf).strip().lower()
+    if s in {"high", "h"}:
+        return "High"
+    if s in {"medium", "med", "m"}:
+        return "Medium"
+    if s in {"low", "l"}:
+        return "Low"
+    return "Medium"
+
+
+def parse_llm_json_response(raw_text: str) -> Tuple[Optional[dict], Optional[str]]:
+    """
+    Parse an LLM response expected to be JSON.
+    Returns: (parsed_object_or_none, error_message_or_none)
+    Strategy:
+    - Prefer fenced JSON blocks
+    - Else attempt to parse entire text
+    """
+    if not isinstance(raw_text, str):
+        return None, "non-string response"
+    candidate = _extract_fenced_json(raw_text) or raw_text
+    obj = _try_parse_json(candidate)
+    if obj is None:
+        return None, "json_parse_failed"
+    # Normalize confidence if present
+    if isinstance(obj, dict) and "confidence" in obj:
+        obj["confidence"] = normalize_confidence(obj["confidence"])
+    return obj, None
