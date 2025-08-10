@@ -21,6 +21,14 @@ from .risk_mgmt.aggresive_debator import create_risky_debator
 from .risk_mgmt.conservative_debator import create_safe_debator
 from .risk_mgmt.neutral_debator import create_neutral_debator
 
+# Cross Examination Agents
+
+from .risk_mgmt.aggresive_debator_ask import create_risky_debator_ask
+from .risk_mgmt.aggresive_debator_ans import create_risky_debator_ans
+from .risk_mgmt.conservative_debator_ask import create_safe_debator_ask
+from .risk_mgmt.conservative_debator_ans import create_safe_debator_ans
+
+
 from .managers.research_manager import create_research_manager
 from .managers.risk_manager import create_risk_manager
 
@@ -45,8 +53,12 @@ __all__ = [
     "create_neutral_debator",
     "create_news_analyst",
     "create_risky_debator",
+    "create_risky_debator_ask",
+    "create_risky_debator_ans",
     "create_risk_manager",
     "create_safe_debator",
+    "create_safe_debator_ask",
+    "create_safe_debator_ans",
     "create_social_media_analyst",
     "create_trader",
 ]

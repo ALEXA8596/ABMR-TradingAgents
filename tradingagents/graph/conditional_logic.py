@@ -112,17 +112,69 @@ class ConditionalLogic:
             print("[DEBUG] Risk debate complete. Handing off to Risk Judge.")
             return "Risk Judge"
         
-        # Determine whose turn it is based on the count
-        # Count % 3 = 0: Risky Analyst
-        # Count % 3 = 1: Safe Analyst  
-        # Count % 3 = 2: Neutral Analyst
-        turn = state["risk_debate_state"]["count"] % 3
-        if turn == 0:
+        
+        # 1 => Risky Analyst
+        # 2 => Safe Analyst
+        # 3 => Neutral Analyst
+        # 4 => Risky Analyst Ask
+        # 5 => Risky Analyst Ans
+        # 6 => Safe Analyst Ask
+        # 7 => Risky Analyst Ans
+        # 8 => Risky Analyst
+        # 9 => Safe Analyst
+        # Repeat 4 to 9 as needed
+        
+        count = state["risk_debate_state"]["count"]
+
+        # 1 => Risky Analyst
+        # 2 => Safe Analyst
+        # 3 => Neutral Analyst
+        # 4 => Risky Analyst Ask
+        # 5 => Risky Analyst Ans
+        # 6 => Safe Analyst Ask
+        # 7 => Risky Analyst Ans
+        # 8 => Risky Analyst
+        # 9 => Safe Analyst
+        # Repeat 4 to 9 as needed
+
+        if count == 0:
             print("[DEBUG] Next: Risky Analyst")
             return "Risky Analyst"
-        elif turn == 1:
+        elif count == 1:
+            print("[DEBUG] Next: Safe Analyst")
+            return "Safe Analyst"
+        elif count == 2:
+            print("[DEBUG] Next: Neutral Analyst")
+            return "Neutral Analyst"
+        elif count == 3:
+            print("[DEBUG] Next: Risky Analyst Ask")
+            return "Risky Analyst Ask"
+        elif count == 4:
+            print("[DEBUG] Next: Risky Analyst Ans")
+            return "Risky Analyst Ans"
+        elif count == 5:
+            print("[DEBUG] Next: Safe Analyst Ask")
+            return "Safe Analyst Ask"
+        elif count == 6:
+            print("[DEBUG] Next: Risky Analyst Ans")
+            return "Risky Analyst Ans"
+        elif count == 7:
+            print("[DEBUG] Next: Risky Analyst")
+            return "Risky Analyst"
+        elif count == 8:
             print("[DEBUG] Next: Safe Analyst")
             return "Safe Analyst"
         else:
-            print("[DEBUG] Next: Neutral Analyst")
-            return "Neutral Analyst"
+            # For counts >= 9, repeat 4-9 as needed
+            repeat_sequence = [
+                "Risky Analyst Ask",
+                "Risky Analyst Ans",
+                "Safe Analyst Ask",
+                "Risky Analyst Ans",
+                "Risky Analyst",
+                "Safe Analyst",
+            ]
+            idx = (count - 3) % len(repeat_sequence)
+            next_role = repeat_sequence[idx]
+            print(f"[DEBUG] Next: {next_role}")
+            return next_role

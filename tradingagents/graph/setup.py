@@ -120,8 +120,16 @@ class GraphSetup:
 
         # Create risk analysis nodes
         risky_analyst = create_risky_debator(self.quick_thinking_llm)
+
+        risky_analyst_ask = create_risky_debator_ask(self.quick_thinking_llm)
+        risky_analyst_ans = create_risky_debator_ans(self.quick_thinking_llm)
+        
         neutral_analyst = create_neutral_debator(self.quick_thinking_llm)
         safe_analyst = create_safe_debator(self.quick_thinking_llm)
+        
+        safe_analyst_ask = create_safe_debator_ask(self.quick_thinking_llm)
+        safe_analyst_ans = create_safe_debator_ans(self.quick_thinking_llm)
+
         risk_manager_node = create_risk_manager(
             self.deep_thinking_llm, self.risk_manager_memory
         )
@@ -147,8 +155,12 @@ class GraphSetup:
         workflow.add_node("Research Manager", research_manager_node)
         workflow.add_node("Trader", trader_node)
         workflow.add_node("Risky Analyst", risky_analyst)
+        workflow.add_node("Risky Analyst Ask", risky_analyst_ask)
+        workflow.add_node("Risky Analyst Ans", risky_analyst_ans)
         workflow.add_node("Neutral Analyst", neutral_analyst)
         workflow.add_node("Safe Analyst", safe_analyst)
+        workflow.add_node("Safe Analyst Ask", safe_analyst_ask)
+        workflow.add_node("Safe Analyst Ans", safe_analyst_ans)
         workflow.add_node("Risk Judge", risk_manager_node)
 
         # Define edges
