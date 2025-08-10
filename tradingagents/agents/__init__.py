@@ -11,8 +11,11 @@ from .researchers.bear_researcher import create_bear_researcher
 from .researchers.bull_researcher import create_bull_researcher
 
 # Cross Examination Agents
-from .researchers.bear_researcher_crossex import create_bear_crossex_researcher
-from .researchers.bull_researcher_crossex import create_bull_crossex_researcher
+from .researchers.bear_researcher_ask import create_bear_researcher_ask
+from .researchers.bear_researcher_ans import create_bear_researcher_ans
+
+from .researchers.bull_researcher_ask import create_bull_researcher_ask
+from .researchers.bull_researcher_ans import create_bull_researcher_ans
 
 from .risk_mgmt.aggresive_debator import create_risky_debator
 from .risk_mgmt.conservative_debator import create_safe_debator
@@ -32,8 +35,10 @@ __all__ = [
     "RiskDebateState",
     "create_bear_researcher",
     "create_bull_researcher",
-    "create_bear_crossex_researcher",
-    "create_bull_crossex_researcher",
+    "create_bear_researcher_ask",
+    "create_bear_researcher_ans",
+    "create_bull_researcher_ask",
+    "create_bull_researcher_ans",
     "create_research_manager",
     "create_fundamentals_analyst",
     "create_market_analyst",

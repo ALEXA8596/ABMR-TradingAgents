@@ -101,11 +101,18 @@ class GraphSetup:
         )
         
         # Cross Ex Nodes
-        bull_crossex_researcher_node = create_bull_crossex_researcher(
+        
+        bull_researcher_ask_node = create_bull_researcher_ask(
+            self.deep_thinking_llm, self.bull_memory
+        )
+        bull_researcher_ans_node = create_bull_researcher_ans(
             self.deep_thinking_llm, self.bull_memory
         )
         
-        bear_crossex_researcher_node = create_bear_crossex_researcher(
+        bear_researcher_ask_node = create_bear_researcher_ask(
+            self.deep_thinking_llm, self.bear_memory
+        )
+        bear_researcher_ans_node = create_bear_researcher_ans(
             self.deep_thinking_llm, self.bear_memory
         )
         
@@ -133,8 +140,10 @@ class GraphSetup:
         # Add other nodes
         workflow.add_node("Bull Researcher", bull_researcher_node)
         workflow.add_node("Bear Researcher", bear_researcher_node)
-        workflow.add_node("Bull Cross Examination Researcher", bull_crossex_researcher_node)
-        workflow.add_node("Bear Cross Examination Researcher", bear_crossex_researcher_node)
+        workflow.add_node("Bull Researcher Ask", bull_researcher_ask_node)
+        workflow.add_node("Bull Researcher Ans", bull_researcher_ans_node)
+        workflow.add_node("Bear Researcher Ask", bear_researcher_ask_node)
+        workflow.add_node("Bear Researcher Ans", bear_researcher_ans_node)
         workflow.add_node("Research Manager", research_manager_node)
         workflow.add_node("Trader", trader_node)
         workflow.add_node("Risky Analyst", risky_analyst)
@@ -177,6 +186,10 @@ class GraphSetup:
                 "Research Manager": "Research Manager",
                 "Bull Cross Examination Researcher": "Bull Cross Examination Researcher",
                 "Bear Cross Examination Researcher": "Bear Cross Examination Researcher",
+                "Bull Researcher Ask": "Bull Researcher Ask",
+                "Bear Researcher Ask": "Bear Researcher Ask",
+                "Bull Researcher Ans": "Bull Researcher Ans",
+                "Bear Researcher Ans": "Bear Researcher Ans",
             },
         )
         workflow.add_conditional_edges(
@@ -187,6 +200,10 @@ class GraphSetup:
                 "Research Manager": "Research Manager",
                 "Bull Cross Examination Researcher": "Bull Cross Examination Researcher",
                 "Bear Cross Examination Researcher": "Bear Cross Examination Researcher",
+                "Bull Researcher Ask": "Bull Researcher Ask",
+                "Bear Researcher Ask": "Bear Researcher Ask",
+                "Bull Researcher Ans": "Bull Researcher Ans",
+                "Bear Researcher Ans": "Bear Researcher Ans",
             },
         )
         workflow.add_conditional_edges(
@@ -197,6 +214,10 @@ class GraphSetup:
                 "Research Manager": "Research Manager",
                 "Bull Researcher": "Bull Researcher",
                 "Bear Researcher": "Bear Researcher",
+                "Bull Researcher Ask": "Bull Researcher Ask",
+                "Bear Researcher Ask": "Bear Researcher Ask",
+                "Bull Researcher Ans": "Bull Researcher Ans",
+                "Bear Researcher Ans": "Bear Researcher Ans",
             },
         )
         workflow.add_conditional_edges(
@@ -207,6 +228,10 @@ class GraphSetup:
                 "Research Manager": "Research Manager",
                 "Bull Researcher": "Bull Researcher",
                 "Bear Researcher": "Bear Researcher",
+                "Bull Researcher Ask": "Bull Researcher Ask",
+                "Bear Researcher Ask": "Bear Researcher Ask",
+                "Bull Researcher Ans": "Bull Researcher Ans",
+                "Bear Researcher Ans": "Bear Researcher Ans",
             },
         )
         workflow.add_edge("Research Manager", "Trader")

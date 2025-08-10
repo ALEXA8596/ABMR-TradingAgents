@@ -46,28 +46,61 @@ class ConditionalLogic:
     def should_continue_debate(self, state: AgentState) -> str:
         """Determine if debate should continue."""
 
-        # 1 => Bullish Researcher
-        # 2 => Bearish Researcher
-        # 3 => Bullish Cross Examination Researcher
-        # 4 => Bearish Cross Examination Researcher
-        # 5 => Bullish Researcher
-        # 6 => Bearish Researcher
-        # 7 => Research Manager
-        # Repeat 3 to 7 as needed
+        # 1 => Bull Researcher
+        # 2 => Bear Researcher
+        # 3 => Bull Researcher Ask
+        # 4 => Bear Researcher Ans
+        # 5 => Bear Researcher Ask
+        # 6 => Bull Researcher Ans
+        # 7 => Bull Researcher
+        # 8 => Bear Researcher
+        # 9 => Research Manager
+        # Repeat 3 to 9 as needed
 
         count = state["investment_debate_state"]["count"]
 
-        if count >= 4 * self.max_debate_rounds:
+        # 1 => Bullish Researcher
+        # 2 => Bearish Researcher
+        # 3 => Bullish Researcher Ask
+        # 4 => Bullish Researcher Ans
+        # 5 => Bearish Researcher Ask
+        # 6 => Bullish Researcher Ans
+        # 7 => Bullish Researcher
+        # 8 => Bearish Researcher
+        # 9 => Research Manager
+        # Repeat 3 to 9 as needed
+
+        if count == 0:
+            return "Bull Researcher"
+        elif count == 1:
+            return "Bear Researcher"
+        elif count == 2:
+            return "Bull Researcher Ask"
+        elif count == 3:
+            return "Bull Researcher Ans"
+        elif count == 4:
+            return "Bear Researcher Ask"
+        elif count == 5:
+            return "Bull Researcher Ans"
+        elif count == 6:
+            return "Bull Researcher"
+        elif count == 7:
+            return "Bear Researcher"
+        elif count == 8:
             return "Research Manager"
-
-        sequence = [
-            "Bull Researcher",
-            "Bear Researcher",
-            "Bull Cross Examination Researcher",
-            "Bear Cross Examination Researcher",
-        ]
-
-        return sequence[count % len(sequence)]
+        else:
+            # For counts >= 9, repeat 3-9 as needed
+            repeat_sequence = [
+                "Bull Researcher Ask",
+                "Bull Researcher Ans",
+                "Bear Researcher Ask",
+                "Bull Researcher Ans",
+                "Bull Researcher",
+                "Bear Researcher",
+                "Research Manager",
+            ]
+            idx = (count - 2) % len(repeat_sequence)
+            return repeat_sequence[idx]
 
     def should_continue_risk_analysis(self, state: AgentState) -> str:
         """Determine if risk analysis should continue."""
