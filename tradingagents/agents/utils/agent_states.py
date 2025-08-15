@@ -5,6 +5,7 @@ from langchain_openai import ChatOpenAI
 from tradingagents.agents import *
 from langgraph.prebuilt import ToolNode
 from langgraph.graph import END, StateGraph, START, MessagesState
+from langgraph.graph.message import AnyMessage, add_messages
 
 
 # Researcher team state
@@ -90,3 +91,7 @@ class AgentState(MessagesState):
     optimized_position_sizing: Annotated[dict, "Optimised position sizing"]
     hedging_strategy: Annotated[dict, "Hedging strategy details"]
     beta_hedging_plan: Annotated[dict, "Market beta hedge implementation plan"]
+
+    # quant options manager outputs
+    quant_options_report_file: Annotated[str, "Path to Quant Options Manager markdown report"]
+    quant_strategies: Annotated[dict, "Selected quantitative strategies forwarded to optimizer"]

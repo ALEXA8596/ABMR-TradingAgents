@@ -98,6 +98,7 @@ class ConditionalLogic:
         """Determine if portfolio optimization flow should continue."""
         # Check if portfolio optimization has been completed
         if "portfolio_optimization_state" not in state or not state["portfolio_optimization_state"]:
-            return "Portfolio Optimizer"
+            # First go to Quant Options Manager in the enterprise flow
+            return "Quant Options Manager"
         else:
             return "END"

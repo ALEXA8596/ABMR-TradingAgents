@@ -121,7 +121,10 @@ class GraphSetup:
             self.deep_thinking_llm, self.risk_manager_memory
         )
 
-        # Portfolio optimizer node
+        # Quant options manager and Portfolio optimizer nodes
+        quant_options_manager_node = create_quant_options_manager(
+            self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
+        )
         portfolio_optimizer_node = create_portfolio_optimizer(
             self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
         )
@@ -148,6 +151,7 @@ class GraphSetup:
         workflow.add_node("Neutral Analyst", neutral_analyst)
         workflow.add_node("Safe Analyst", safe_analyst)
         workflow.add_node("Risk Judge", risk_manager_node)
+        workflow.add_node("Quant Options Manager", quant_options_manager_node)
         workflow.add_node("Portfolio Optimizer", portfolio_optimizer_node)
 
         # Define edges
@@ -248,10 +252,11 @@ class GraphSetup:
             "Risk Judge",
             self.conditional_logic.should_continue_portfolio_flow,
             {
-                "Portfolio Optimizer": "Portfolio Optimizer",
+                "Quant Options Manager": "Quant Options Manager",
                 "END": END,
             },
         )
+        workflow.add_edge("Quant Options Manager", "Portfolio Optimizer")
         workflow.add_edge("Portfolio Optimizer", "Risk Judge")
 
         # Compile and return
