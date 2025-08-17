@@ -1,0 +1,45 @@
+{
+  "ticker": "NVDA",
+  "timestamp": "2025-08-17T19:20:57.759829",
+  "volatility_alpha": {
+    "signal_type": "VOLATILITY",
+    "confidence": 0.75,
+    "magnitude": -0.3,
+    "time_horizon": "SHORT_TERM",
+    "rationale": "Chain-of-Thought: IV (25%) > HV (22%) \u2192 Volatility overpriced by 3%"
+  },
+  "directional_alpha": {
+    "signal_type": "DIRECTIONAL",
+    "confidence": 0.8,
+    "magnitude": 0.6,
+    "time_horizon": "MEDIUM_TERM",
+    "rationale": "Chain-of-Thought: Momentum (0.15) + Sentiment (0.65) + RSI (65) \u2192 Bullish bias"
+  },
+  "arbitrage_alpha": {
+    "signal_type": "ARBITRAGE",
+    "confidence": 0.4,
+    "magnitude": 0.2,
+    "time_horizon": "SHORT_TERM",
+    "rationale": "Chain-of-Thought: Vol surface fairly priced, minimal calendar spread opportunities"
+  },
+  "hedging_alpha": {
+    "signal_type": "HEDGING",
+    "confidence": 0.65,
+    "magnitude": 0.4,
+    "time_horizon": "MEDIUM_TERM",
+    "rationale": "Chain-of-Thought: Moderate market risks + sentiment volatility \u2192 Protective hedging beneficial"
+  },
+  "combined_alpha_score": 0.10925000000000001,
+  "recommended_strategies": [
+    "Iron Condors",
+    "Butterfly Spreads",
+    "Calendar Spreads"
+  ],
+  "risk_metrics": {
+    "volatility_risk": 0.35,
+    "directional_risk": 0.016,
+    "execution_risk": 0.2,
+    "total_risk": 0.566,
+    "risk_reward_ratio": 0.193
+  }
+}

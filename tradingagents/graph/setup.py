@@ -128,6 +128,11 @@ class GraphSetup:
         portfolio_optimizer_node = create_portfolio_optimizer(
             self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
         )
+        
+        # Chain-of-Alpha options analyst node
+        chain_of_alpha_analyst_node = create_chain_of_alpha_options_analyst(
+            self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
+        )
 
         # Create workflow
         workflow = StateGraph(AgentState)
@@ -151,6 +156,7 @@ class GraphSetup:
         workflow.add_node("Neutral Analyst", neutral_analyst)
         workflow.add_node("Safe Analyst", safe_analyst)
         workflow.add_node("Risk Judge", risk_manager_node)
+        workflow.add_node("Chain-of-Alpha Options Analyst", chain_of_alpha_analyst_node)
         workflow.add_node("Quant Options Manager", quant_options_manager_node)
         workflow.add_node("Portfolio Optimizer", portfolio_optimizer_node)
 
@@ -252,10 +258,11 @@ class GraphSetup:
             "Risk Judge",
             self.conditional_logic.should_continue_portfolio_flow,
             {
-                "Quant Options Manager": "Quant Options Manager",
+                "Chain-of-Alpha Options Analyst": "Chain-of-Alpha Options Analyst",
                 "END": END,
             },
         )
+        workflow.add_edge("Chain-of-Alpha Options Analyst", "Quant Options Manager")
         workflow.add_edge("Quant Options Manager", "Portfolio Optimizer")
         workflow.add_edge("Portfolio Optimizer", "Risk Judge")
 

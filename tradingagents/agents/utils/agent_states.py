@@ -95,3 +95,10 @@ class AgentState(MessagesState):
     # quant options manager outputs
     quant_options_report_file: Annotated[str, "Path to Quant Options Manager markdown report"]
     quant_strategies: Annotated[dict, "Selected quantitative strategies forwarded to optimizer"]
+    
+    # Chain-of-Alpha options analyst outputs
+    options_alpha_analysis: Annotated[dict, "Comprehensive Chain-of-Alpha options analysis"]
+    alpha_report_file: Annotated[str, "Path to Chain-of-Alpha analysis markdown report"]
+    alpha_artifact_file: Annotated[str, "Path to Chain-of-Alpha analysis JSON artifact"]
+    chain_of_alpha_completed: Annotated[bool, "Whether Chain-of-Alpha analysis is completed"]
+    alpha_signals: Annotated[dict, "Individual alpha signals (volatility, directional, arbitrage, hedging)"]

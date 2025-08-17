@@ -22,6 +22,7 @@ from .managers.research_manager import create_research_manager
 from .managers.risk_manager import create_risk_manager
 from .managers.portfolio_optimizer import create_portfolio_optimizer
 from .managers.quantoptions_manager import create_quant_options_manager
+from .analysts.quant_options_analyst import create_chain_of_alpha_options_analyst
 
 from .trader.trader import create_trader
 
@@ -47,5 +48,6 @@ __all__ = [
     "create_social_media_analyst",
     "create_portfolio_optimizer",
     "create_quant_options_manager",
+    "create_chain_of_alpha_options_analyst",
     "create_trader",
 ]
