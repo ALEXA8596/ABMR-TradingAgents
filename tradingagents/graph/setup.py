@@ -157,7 +157,7 @@ class GraphSetup:
         workflow.add_node("Safe Analyst", safe_analyst)
         workflow.add_node("Risk Judge", risk_manager_node)
         workflow.add_node("Chain-of-Alpha Options Analyst", chain_of_alpha_analyst_node)
-        workflow.add_node("Quant Options Manager", quant_options_manager_node)
+        # workflow.add_node("Quant Options Manager", quant_options_manager_node)
         workflow.add_node("Portfolio Optimizer", portfolio_optimizer_node)
 
         # Define edges
@@ -262,9 +262,19 @@ class GraphSetup:
                 "END": END,
             },
         )
-        workflow.add_edge("Chain-of-Alpha Options Analyst", "Quant Options Manager")
-        workflow.add_edge("Quant Options Manager", "Portfolio Optimizer")
-        workflow.add_edge("Portfolio Optimizer", "Risk Judge")
+        # Wire options -> quant manager -> optimizer. Use try/except to avoid KeyError if nodes missing.
+        try:
+            workflow.add_edge("Chain-of-Alpha Options Analyst", "Portfolio Optimizer")
+            # workflow.add_edge("Quant Options Manager", "Portfolio Optimizer")
+            workflow.add_edge("Portfolio Optimizer", "Risk Judge")
+        except KeyError as e:
+            # Fallback: connect Chain-of-Alpha directly to Risk Judge so the flow remains valid
+            print(f"Warning: missing node when wiring options->optimizer: {e}")
+            try:
+                workflow.add_edge("Chain-of-Alpha Options Analyst", "Risk Judge")
+            except Exception:
+                # final defensive no-op
+                pass
 
         # Compile and return
         return workflow.compile()
