@@ -10,3 +10,6 @@ eval_data/
 results
 venv/
 *.jsonl
+/tools/dataflow_fixtures/finnhub_data
+/tools/dataflow_fixtures/node_modules
+/tools/dataflow_fixtures/reddit_data
