@@ -422,6 +422,84 @@ class Toolkit:
     
     @staticmethod
     @tool
+    def buy(ticker, quantity = 1, date: Annotated[str, "Date of the purchase in yyyy-mm-dd format"] = date.today().strftime("%Y-%m-%d")):
+        """
+        Buy a specified quantity of a stock.
+        Args:
+            ticker (str): Ticker symbol of the stock to buy.
+            quantity (int): Number of shares to buy. Default is 1.
+        Returns:
+            str: Confirmation message of the purchase.
+        """
+        
+        portfolio = json.load(open(os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json"), "r"))
+        stockportfolio = portfolio.get(ticker, {})
+        stockportfolio.get('shares', 0)
+        stockportfolio['shares'] = stockportfolio.get('shares', 0) + quantity
+        
+        
+        # Check if this ticker exists in portfolio, if not create it
+        if ticker not in portfolio:
+            portfolio[ticker] = {}
+            
+        # Check if transactions array exists, if not create it
+        if 'transactions' not in stockportfolio:
+            stockportfolio['transactions'] = []
+
+        # Get current price for the ticker
+        try:
+            stock = yf.Ticker(ticker)
+            current_price = stock.history(period="1d")['Close'].iloc[-1]
+        except:
+            current_price = 0  # Default if we can't get the price
+
+        # Calculate total value after purchase
+        total_value = stockportfolio['shares'] * current_price
+
+        # Add transaction to the transactions array
+        transaction = {
+            "date": date,
+            "type": "BUY",
+            "quantity": quantity,
+            "price_per_share": current_price,
+            "total_value": total_value,
+        }
+        stockportfolio['transactions'].append(transaction)
+
+        # Update the portfolio with the updated stockportfolio
+        portfolio[ticker] = stockportfolio
+        with open(os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json"), "w") as f:
+            json.dump(portfolio, f, indent=2)
+        
+        return f"Bought {quantity} shares of {ticker}."
+
+    @staticmethod
+    @tool
+    def sell(ticker, quantity = 1, date: Annotated[str, "Date of the sale in yyyy-mm-dd format"] = date.today().strftime("%Y-%m-%d")):
+        """
+        Sell a specified quantity of a stock.
+        Args:
+            ticker (str): Ticker symbol of the stock to sell.
+            quantity (int): Number of shares to sell. Default is 1.
+        Returns:
+            str: Confirmation message of the sale.
+        """
+        # This is a placeholder for actual trading logic
+        portfolio = json.load(open(os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json"), "r"))
+        stockportfolio = portfolio.get(ticker, {})
+        if stockportfolio.get('shares', 0) < quantity:
+            return f"Error: Not enough shares of {ticker} to sell. Current shares: {stockportfolio.get('shares', 0)}"
+        stockportfolio['shares'] -= quantity
+        
+        
+        
+        with open(os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json"), "w") as f:
+            json.dump(portfolio, f, indent=2)
+        
+        return f"Sold {quantity} shares of {ticker}."
+
+    @staticmethod
+    @tool
     def get_portfolio_kelly_criterion(
         ticker: Annotated[str, "Ticker symbol of the company"],
     ) -> dict:

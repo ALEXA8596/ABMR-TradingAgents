@@ -43,15 +43,6 @@ def create_portfolio_optimizer(llm, memory, toolkit):
                  toolkit.perform_stress_test,
                  toolkit.calculate_beta,
                  toolkit.design_hedging_strategy,
-                 # Todo
-                 # toolkit.analyze_asset_correlations,
-                 # toolkit.calculate_var_cvar,
-                 # toolkit.design_options_strategy,
-                 # toolkit.optimize_crypto_hedging,
-                 # toolkit.generate_futures_hedge_ratios,
-                 # toolkit.analyze_forex_exposure,
-                 # toolkit.calculate_commodity_hedge,
-                 # toolkit.generate_rebalancing_schedule
                 ]
 
         prompt = f"""As the Senior Quantitative Portfolio Manager, create a comprehensive institutional-grade portfolio optimization strategy for {company_name}. Your analysis must cover advanced hedging across ALL asset classes including crypto, options, futures, forex, and commodities.
@@ -151,8 +142,8 @@ Create a detailed markdown report covering:
 
 Provide specific trade recommendations, position sizes, and quantitative analysis. Make this institutional-quality with hedge fund level sophistication."""
 
-        response = llm.invoke(prompt)
-        
+        response = llm.invoke(prompt, tools=tools)
+
         # Create the markdown report
         portfolio_analysis = response.content
         
