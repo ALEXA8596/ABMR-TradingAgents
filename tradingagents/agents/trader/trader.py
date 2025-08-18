@@ -1,10 +1,13 @@
 import functools
 import time
 import json
+from datetime import datetime
 from tradingagents.blackboard.utils import create_agent_blackboard
+from tradingagents.agents.utils.agent_utils import Toolkit
 
 
-def create_trader(llm, memory):
+def create_trader(llm, memory, toolkit=None):
+    # toolkit is supplied by the graph setup; fallback to Toolkit class if not provided
     def trader_node(state, name):
         ticker = state["company_of_interest"]
         investment_plan = state["investment_plan"]
@@ -106,7 +109,10 @@ Consider all the insights from analysts, risk managers, research managers, and c
             context,
         ]
 
-        result = llm.invoke(messages)
+        # Supply buy/sell tools to the LLM so it can call them directly if it decides to execute a trade
+        tk = toolkit if toolkit is not None else Toolkit()
+        tools = [tk.buy, tk.sell]
+        result = llm.invoke(messages, tools=tools)
 
         # Extract trade decision from response
         response_text = result.content.upper()
@@ -131,35 +137,10 @@ Consider all the insights from analysts, risk managers, research managers, and c
             reasoning=f"Trade decision for {ticker} based on comprehensive multi-agent analysis."
         )
 
-        # Post trade proposal for execution
-        quantity = 100  # Default quantity, could be calculated based on portfolio size
-        price = 150.0   # Default price, could be fetched from market data
-        blackboard_agent.post_trade_proposal(
-            ticker=ticker,
-            action=trade_action,
-            quantity=quantity,
-            price=price,
-            reasoning=f"Trade proposal for {ticker} based on trader decision."
-        )
-
-        # Post trade analysis
-        blackboard_agent.post_trade_analysis(
-            ticker=ticker,
-            market_conditions=f"Market analysis for {ticker} based on current conditions.",
-            technical_analysis=f"Technical analysis for {ticker} from market data.",
-            fundamental_analysis=f"Fundamental analysis for {ticker} from company data.",
-            risk_assessment=f"Risk assessment for {ticker} from risk managers."
-        )
-
-        # Post portfolio update (simulated)
-        current_position = 0  # This would be calculated from actual portfolio
-        current_value = 0.0   # This would be calculated from actual portfolio
-        blackboard_agent.post_portfolio_update(
-            ticker=ticker,
-            position_size=current_position,
-            current_value=current_value,
-            unrealized_pnl=0.0
-        )
+        # Execution must be performed by the LLM via the provided tools.
+        # Capture any tool responses returned in the LLM response object if present.
+        exec_result = getattr(result, 'tool_responses', None) or getattr(result, 'tools_called', None) or result.content
+        print(f"Trade execution result (from LLM/tools): {exec_result}")
 
         return {
             "messages": [result],

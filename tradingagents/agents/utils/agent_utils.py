@@ -11,8 +11,8 @@ import numpy as np
 import os
 from dateutil.relativedelta import relativedelta
 from langchain_openai import ChatOpenAI
-import tradingagents.dataflows.interface as interface
 from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.dataflows import interface
 import json
 import yfinance as yf
 
@@ -422,41 +422,36 @@ class Toolkit:
     
     @staticmethod
     @tool
-    def buy(ticker, quantity = 1, date: Annotated[str, "Date of the purchase in yyyy-mm-dd format"] = date.today().strftime("%Y-%m-%d")):
-        """
-        Buy a specified quantity of a stock.
-        Args:
-            ticker (str): Ticker symbol of the stock to buy.
-            quantity (int): Number of shares to buy. Default is 1.
-        Returns:
-            str: Confirmation message of the purchase.
-        """
-        
-        portfolio = json.load(open(os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json"), "r"))
+    def buy(ticker, date: Annotated[str, "Date of the purchase in yyyy-mm-dd format"], quantity = 1):
+        if not ticker or not date:
+            return "Ticker and date must be provided for buying shares. Please provide both and try again."
+        # Delegate to implementation
+        return Toolkit.buy_impl(ticker, date, quantity)
+
+    @staticmethod
+    def buy_impl(ticker, date: Annotated[str, "Date of the purchase in yyyy-mm-dd format"], quantity = 1) -> str:
+        """Implementation to buy shares and persist to portfolio.json"""
+        portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json")
+        # Ensure portfolio file exists
+        if not os.path.exists(portfolio_path):
+            with open(portfolio_path, "w") as f:
+                json.dump({}, f)
+
+        portfolio = json.load(open(portfolio_path, "r"))
         stockportfolio = portfolio.get(ticker, {})
-        stockportfolio.get('shares', 0)
+        # Initialize fields
         stockportfolio['shares'] = stockportfolio.get('shares', 0) + quantity
-        
-        
-        # Check if this ticker exists in portfolio, if not create it
-        if ticker not in portfolio:
-            portfolio[ticker] = {}
-            
-        # Check if transactions array exists, if not create it
         if 'transactions' not in stockportfolio:
             stockportfolio['transactions'] = []
 
         # Get current price for the ticker
         try:
             stock = yf.Ticker(ticker)
-            current_price = stock.history(period="1d")['Close'].iloc[-1]
-        except:
-            current_price = 0  # Default if we can't get the price
+            current_price = float(stock.history(period="1d")['Close'].iloc[-1])
+        except Exception:
+            current_price = 0.0
 
-        # Calculate total value after purchase
         total_value = stockportfolio['shares'] * current_price
-
-        # Add transaction to the transactions array
         transaction = {
             "date": date,
             "type": "BUY",
@@ -465,38 +460,91 @@ class Toolkit:
             "total_value": total_value,
         }
         stockportfolio['transactions'].append(transaction)
-
-        # Update the portfolio with the updated stockportfolio
         portfolio[ticker] = stockportfolio
-        with open(os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json"), "w") as f:
+        with open(portfolio_path, "w") as f:
             json.dump(portfolio, f, indent=2)
-        
         return f"Bought {quantity} shares of {ticker}."
 
     @staticmethod
     @tool
-    def sell(ticker, quantity = 1, date: Annotated[str, "Date of the sale in yyyy-mm-dd format"] = date.today().strftime("%Y-%m-%d")):
-        """
-        Sell a specified quantity of a stock.
-        Args:
-            ticker (str): Ticker symbol of the stock to sell.
-            quantity (int): Number of shares to sell. Default is 1.
-        Returns:
-            str: Confirmation message of the sale.
-        """
-        # This is a placeholder for actual trading logic
-        portfolio = json.load(open(os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json"), "r"))
+    def hold(ticker, date: Annotated[str, "Date of the hold in yyyy-mm-dd format"], note: Annotated[str, "Optional note"] = ""):
+        """Tool wrapper for recording a HOLD decision for a ticker/date."""
+        if not ticker or not date:
+            return "Ticker and date must be provided for holding."
+        return Toolkit.hold_impl(ticker, date, note)
+
+    @staticmethod
+    def hold_impl(ticker: str, date: str, note: str = "") -> str:
+        """Persist a HOLD decision as a portfolio transaction (quantity 0) so actions are auditable."""
+        portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json")
+        if not os.path.exists(portfolio_path):
+            with open(portfolio_path, "w") as f:
+                json.dump({}, f)
+
+        portfolio = json.load(open(portfolio_path, "r"))
         stockportfolio = portfolio.get(ticker, {})
-        if stockportfolio.get('shares', 0) < quantity:
-            return f"Error: Not enough shares of {ticker} to sell. Current shares: {stockportfolio.get('shares', 0)}"
-        stockportfolio['shares'] -= quantity
-        
-        
-        
-        with open(os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json"), "w") as f:
+        if 'transactions' not in stockportfolio:
+            stockportfolio['transactions'] = []
+
+        transaction = {
+            "date": date,
+            "type": "HOLD",
+            "quantity": 0,
+            "price_per_share": None,
+            "total_value": None,
+            "note": note,
+        }
+        stockportfolio['transactions'].append(transaction)
+        portfolio[ticker] = stockportfolio
+        with open(portfolio_path, "w") as f:
             json.dump(portfolio, f, indent=2)
+        return f"Recorded HOLD for {ticker}. {('Note: ' + note) if note else ''}"
+
+    @staticmethod
+    @tool
+    def sell(ticker, date: Annotated[str, "Date of the sale in yyyy-mm-dd format"], quantity = 1):
         
-        return f"Sold {quantity} shares of {ticker}."
+        if not ticker or not date:
+            return "Ticker and date must be provided for selling shares. Please provide both and try again."
+        # Delegate to implementation
+        if quantity <= 0:
+            return "Quantity must be greater than 0 for selling shares. Please provide a valid quantity and try again."
+        return Toolkit.sell_impl(ticker, date, quantity)
+
+    @staticmethod
+    def sell_impl(ticker: str, date: str, quantity: int = 1) -> str:
+        """Implementation to sell shares and persist to portfolio.json"""
+        portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json")
+        if not os.path.exists(portfolio_path):
+            return f"No portfolio exists to sell {ticker}."
+        portfolio = json.load(open(portfolio_path, "r"))
+        stockportfolio = portfolio.get(ticker, {})
+        current_shares = stockportfolio.get('shares', 0)
+        if current_shares <= 0:
+            return f"No shares of {ticker} to sell."
+        sell_qty = min(quantity, current_shares)
+        # Get current price
+        try:
+            stock = yf.Ticker(ticker)
+            current_price = float(stock.history(period="1d")['Close'].iloc[-1])
+        except Exception:
+            current_price = 0.0
+
+        stockportfolio['shares'] = current_shares - sell_qty
+        if 'transactions' not in stockportfolio:
+            stockportfolio['transactions'] = []
+        transaction = {
+            "date": date,
+            "type": "SELL",
+            "quantity": sell_qty,
+            "price_per_share": current_price,
+            "total_value": stockportfolio['shares'] * current_price,
+        }
+        stockportfolio['transactions'].append(transaction)
+        portfolio[ticker] = stockportfolio
+        with open(portfolio_path, "w") as f:
+            json.dump(portfolio, f, indent=2)
+        return f"Sold {sell_qty} shares of {ticker}."
 
     @staticmethod
     @tool
@@ -1826,5 +1874,4 @@ class Toolkit:
             
         except Exception as e:
             return {"error": f"Hedging strategy design failed: {str(e)}", "hedging_strategy": {}}
-        
-    
+
