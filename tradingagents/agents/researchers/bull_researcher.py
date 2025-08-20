@@ -180,19 +180,40 @@ Provide a comprehensive analysis that builds upon previous rounds and directly a
         round_info = get_debate_round_info(state)
         current_round = round_info["round"]
         current_step = round_info["step_name"]
+        
+        print(f"[DEBUG] Bull Researcher: Round {current_round}, Step {current_step}, Count {investment_debate_state['count']}")
+
+        # Parse history fields as JSON arrays
+        try:
+            history_list = json.loads(history) if history else []
+        except Exception:
+            history_list = []
+        
+        try:
+            bull_history_list = json.loads(bull_history) if bull_history else []
+        except Exception:
+            bull_history_list = []
+        
+        # Append new argument
+        history_list.append(argument)
+        bull_history_list.append(argument)
 
         new_investment_debate_state = {
-            "history": history + "\n" + argument,
-            "bull_history": bull_history + "\n" + argument,
-            "bear_history": investment_debate_state.get("bear_history", ""),
+            "history": json.dumps(history_list),
+            "bull_history": json.dumps(bull_history_list),
+            "bear_history": investment_debate_state.get("bear_history", "[]"),
             "current_response": argument,
+            "judge_decision": investment_debate_state.get("judge_decision", ""),
             "count": investment_debate_state["count"],  # Keep current count
         }
 
         # Increment the count for the next step
         updated_state = {"investment_debate_state": new_investment_debate_state}
         updated_state = increment_debate_count(updated_state)
+        
+        print(f"[DEBUG] Bull Researcher completed. New count: {updated_state['investment_debate_state']['count']}")
 
+        # Return the complete state update
         return updated_state
 
     return bull_node

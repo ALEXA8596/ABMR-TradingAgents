@@ -52,6 +52,10 @@ class ConditionalLogic:
         # Calculate the maximum rounds based on configuration
         max_rounds = self.max_debate_rounds
         
+        print(f"[DEBUG] should_continue_debate: count={count}, max_rounds={max_rounds}")
+        print(f"[DEBUG] State keys: {list(state.keys())}")
+        print(f"[DEBUG] investment_debate_state keys: {list(state['investment_debate_state'].keys())}")
+        
         # Each complete round consists of: Bull → Bear → Bull Cross → Bear Cross
         # So we need 4 * max_rounds total responses before ending
         if count >= 4 * max_rounds:
@@ -72,6 +76,7 @@ class ConditionalLogic:
         # Get the next researcher in the sequence
         next_researcher = sequence[count % len(sequence)]
         print(f"[DEBUG] Debate flow: Count: {count}, Max rounds: {max_rounds}, Next: {next_researcher}")
+        print(f"[DEBUG] Count % 4 = {count % 4}, Sequence index = {count % len(sequence)}")
         
         # Return the next researcher in the sequence
         return next_researcher

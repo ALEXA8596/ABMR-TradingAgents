@@ -12,9 +12,15 @@ def increment_debate_count(state: dict) -> dict:
     Returns:
         Updated state with incremented count
     """
+    print(f"[DEBUG] increment_debate_count called with state keys: {list(state.keys())}")
     if "investment_debate_state" in state:
         current_count = state["investment_debate_state"].get("count", 0)
-        state["investment_debate_state"]["count"] = current_count + 1
+        new_count = current_count + 1
+        state["investment_debate_state"]["count"] = new_count
+        print(f"[DEBUG] Debate count incremented: {current_count} -> {new_count}")
+        print(f"[DEBUG] Updated investment_debate_state: {state['investment_debate_state']}")
+    else:
+        print(f"[DEBUG] WARNING: investment_debate_state not found in state!")
     
     return state
 

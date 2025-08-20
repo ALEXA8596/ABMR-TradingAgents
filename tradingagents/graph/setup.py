@@ -186,9 +186,9 @@ class GraphSetup:
             self.conditional_logic.should_continue_debate,
             {
                 "Bear Researcher": "Bear Researcher",
-                "Research Manager": "Research Manager",
                 "Bull Cross Examination Researcher": "Bull Cross Examination Researcher",
                 "Bear Cross Examination Researcher": "Bear Cross Examination Researcher",
+                "Research Manager": "Research Manager",
             },
         )
         workflow.add_conditional_edges(
@@ -196,29 +196,29 @@ class GraphSetup:
             self.conditional_logic.should_continue_debate,
             {
                 "Bull Researcher": "Bull Researcher",
-                "Research Manager": "Research Manager",
                 "Bull Cross Examination Researcher": "Bull Cross Examination Researcher",
                 "Bear Cross Examination Researcher": "Bear Cross Examination Researcher",
+                "Research Manager": "Research Manager",
             },
         )
         workflow.add_conditional_edges(
             "Bull Cross Examination Researcher",
             self.conditional_logic.should_continue_debate,
             {
-                "Bear Cross Examination Researcher": "Bear Cross Examination Researcher",
-                "Research Manager": "Research Manager",
                 "Bull Researcher": "Bull Researcher",
                 "Bear Researcher": "Bear Researcher",
+                "Bear Cross Examination Researcher": "Bear Cross Examination Researcher",
+                "Research Manager": "Research Manager",
             },
         )
         workflow.add_conditional_edges(
             "Bear Cross Examination Researcher",
             self.conditional_logic.should_continue_debate,
             {
-                "Bull Cross Examination Researcher": "Bull Cross Examination Researcher",
-                "Research Manager": "Research Manager",
                 "Bull Researcher": "Bull Researcher",
                 "Bear Researcher": "Bear Researcher",
+                "Bull Cross Examination Researcher": "Bull Cross Examination Researcher",
+                "Research Manager": "Research Manager",
             },
         )
         workflow.add_edge("Research Manager", "Trader")
