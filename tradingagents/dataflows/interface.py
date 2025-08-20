@@ -22,7 +22,7 @@ def get_finnhub_news(
         "Search query of a company's, e.g. 'AAPL, TSM, etc.",
     ],
     curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
-    look_back_days: Annotated[int, "how many days to look back"],
+    look_back_days: Annotated[int, "how many days to look back"] = 7,
 ):
     """
     Retrieve news about a company within a time frame
@@ -46,14 +46,26 @@ def get_finnhub_news(
         return ""
 
     combined_result = ""
+    seen_dicts = []
+
+    config = get_config()
+    if config["abmrOffline"]:
+        for entry in result:
+            if entry not in seen_dicts:
+                combined_result += f"### {entry['headline']} ({entry['date']}):\n{entry['summary']}\n\n"
+                seen_dicts.append(entry)
+        return f"## {ticker} News, from {before} to {curr_date}:\n" + str(combined_result)
+
     for day, data in result.items():
         if len(data) == 0:
             continue
         for entry in data:
-            current_news = (
-                "### " + entry["headline"] + f" ({day})" + "\n" + entry["summary"]
-            )
-            combined_result += current_news + "\n\n"
+            if entry not in seen_dicts:
+                current_news = (
+                    "### " + entry["headline"] + f" ({day})" + "\n" + entry["summary"]
+                )
+                combined_result += current_news + "\n\n"
+                seen_dicts.append(entry)
 
     return f"## {ticker} News, from {before} to {curr_date}:\n" + str(combined_result)
 
@@ -64,7 +76,7 @@ def get_finnhub_company_insider_sentiment(
         str,
         "current date of you are trading at, yyyy-mm-dd",
     ],
-    look_back_days: Annotated[int, "number of days to look back"],
+    look_back_days: Annotated[int, "number of days to look back"] = 7,
 ):
     """
     Retrieve insider sentiment about a company (retrieved from public SEC information) for the past 15 days
@@ -86,6 +98,17 @@ def get_finnhub_company_insider_sentiment(
 
     result_str = ""
     seen_dicts = []
+    config = get_config()
+    if config["abmrOffline"]:
+        for entry in data:
+            if entry not in seen_dicts:
+                result_str += f"### {entry['year']}-{entry['month']}:\nChange: {entry['change']}\nMonthly Share Purchase Ratio: {entry['mspr']}\n\n"
+                seen_dicts.append(entry)
+        return (
+            f"## {ticker} Insider Sentiment Data for {before} to {curr_date}:\n"
+            + result_str
+            + "The change field refers to the net buying/selling from all insiders' transactions. The mspr field refers to monthly share purchase ratio."
+        )
     for date, senti_list in data.items():
         for entry in senti_list:
             if entry not in seen_dicts:
@@ -128,6 +151,20 @@ def get_finnhub_company_insider_transactions(
     result_str = ""
 
     seen_dicts = []
+
+    config = get_config()
+
+    if config["abmrOffline"]:
+        for entry in data:
+            if entry not in seen_dicts:
+                result_str += f"### Filing Date: {entry['filingDate']}, {entry['name']}:\nChange:{entry['change']}\nShares: {entry['share']}\nTransaction Price: {entry['transactionPrice']}\nTransaction Code: {entry['transactionCode']}\n\n"
+                seen_dicts.append(entry)
+        return (
+            f"## {ticker} insider transactions from {before} to {curr_date}:\n"
+            + result_str
+            + "The change field reflects the variation in share count—here a negative number indicates a reduction in holdings—while share specifies the total number of shares involved. The transactionPrice denotes the per-share price at which the trade was executed, and transactionDate marks when the transaction occurred. The name field identifies the insider making the trade, and transactionCode (e.g., S for sale) clarifies the nature of the transaction. FilingDate records when the transaction was officially reported, and the unique id links to the specific SEC filing, as indicated by the source. Additionally, the symbol ties the transaction to a particular company, isDerivative flags whether the trade involves derivative securities, and currency notes the currency context of the transaction."
+        )
+
     for date, senti_list in data.items():
         for entry in senti_list:
             if entry not in seen_dicts:
@@ -140,7 +177,7 @@ def get_finnhub_company_insider_transactions(
         + "The change field reflects the variation in share count—here a negative number indicates a reduction in holdings—while share specifies the total number of shares involved. The transactionPrice denotes the per-share price at which the trade was executed, and transactionDate marks when the transaction occurred. The name field identifies the insider making the trade, and transactionCode (e.g., S for sale) clarifies the nature of the transaction. FilingDate records when the transaction was officially reported, and the unique id links to the specific SEC filing, as indicated by the source. Additionally, the symbol ties the transaction to a particular company, isDerivative flags whether the trade involves derivative securities, and currency notes the currency context of the transaction."
     )
 
-
+# TODO
 def get_simfin_balance_sheet(
     ticker: Annotated[str, "ticker symbol"],
     freq: Annotated[
@@ -666,7 +703,7 @@ def get_YFin_data_online(
 
     return header + csv_string
 
-
+# Dones
 def get_YFin_data(
     symbol: Annotated[str, "ticker symbol of the company"],
     start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
@@ -679,6 +716,11 @@ def get_YFin_data(
             f"market_data/price_data/{symbol}-YFin-data-2015-01-01-2025-03-25.csv",
         )
     )
+
+    if start_date < "2015-01-01":
+        raise Exception(
+            f"Get_YFin_Data: {start_date} is outside of the data range of 2015-01-01 to 2025-03-25"
+        )
 
     if end_date > "2025-03-25":
         raise Exception(

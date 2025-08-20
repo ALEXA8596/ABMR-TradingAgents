@@ -18,19 +18,19 @@ def get_data_in_range(ticker, start_date, end_date, data_type, data_dir, period=
             data_dir,
             "finnhub_data",
             data_type,
-            f"{ticker}_{period}_data_formatted.json",
+            f"{ticker}_{start_date}_{end_date}_{period}.json",
         )
     else:
         data_path = os.path.join(
-            data_dir, "finnhub_data", data_type, f"{ticker}_data_formatted.json"
+            data_dir, "finnhub_data", data_type, f"{ticker}_{start_date}_{end_date}_data_formatted.json"
         )
 
     data = open(data_path, "r")
     data = json.load(data)
 
-    # filter keys (date, str in format YYYY-MM-DD) by the date range (str, str in format YYYY-MM-DD)
-    filtered_data = {}
-    for key, value in data.items():
-        if start_date <= key <= end_date and len(value) > 0:
-            filtered_data[key] = value
-    return filtered_data
+    # # filter keys (date, str in format YYYY-MM-DD) by the date range (str, str in format YYYY-MM-DD)
+    # filtered_data = {}
+    # for key, value in data.items():
+    #     if start_date <= key <= end_date and len(value) > 0:
+    #         filtered_data[key] = value
+    return data

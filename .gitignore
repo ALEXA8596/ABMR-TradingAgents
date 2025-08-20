@@ -20,3 +20,5 @@ venv/
 /tools/dataflow_fixtures/simfin_data
 /tools/dataflow_fixtures/simfin
 /tools/dataflow_fixtures/gnews_data
+/data/finnhub_data
+/data/reddit_data
