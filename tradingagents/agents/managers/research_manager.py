@@ -1,6 +1,7 @@
 import time
 import json
 from tradingagents.blackboard.utils import create_agent_blackboard
+from tradingagents.agents.utils.debate_utils import get_debate_round_info
 
 
 def create_research_manager(llm, memory):

@@ -1,11 +1,17 @@
 from langchain_core.messages import AIMessage
 import json
+from tradingagents.agents.utils.debate_utils import increment_debate_count, get_debate_round_info
 
 def create_bull_crossex_researcher(llm, memory):
     def bull_crossex_node(state) -> dict:
         investment_debate_state = state["investment_debate_state"]
         bear_response = investment_debate_state.get("current_response", "")
         bull_history = investment_debate_state.get("bull_history", "[]")
+
+        # Get current debate round information
+        round_info = get_debate_round_info(state)
+        current_round = round_info["round"]
+        current_step = round_info["step_name"]
 
         curr_situation = f"Bear Response: {bear_response}"
         past_memories = memory.get_memories(curr_situation, n_matches=2)
@@ -25,7 +31,9 @@ def create_bull_crossex_researcher(llm, memory):
   }, ...]
 }"""
 
-        prompt = f"""You are a Bull Analyst conducting a cross-examination of the Bear Analyst's arguments. Your goal is to critically analyze the bear's response, generate insightful questions, and provide strong rebuttals to their claims.
+        prompt = f"""You are a Bull Analyst conducting a cross-examination of the Bear Analyst's arguments in Round {current_round}. Your goal is to critically analyze the bear's response, generate insightful questions, and provide strong rebuttals to their claims.
+
+Current Debate Status: Round {current_round}, {current_step} Step
 
 Key points to focus on:
 
@@ -57,13 +65,18 @@ The content of the questions and rebuttals should be detailed and evidence-based
         bull_history_list.append(crossex_json)
         new_bull_history = json.dumps(bull_history_list)
 
+        # Update the debate state
         new_investment_debate_state = {
             "bull_history": new_bull_history,
             "bear_history": investment_debate_state.get("bear_history", "[]"),
             "current_response": crossex_json,
-            "count": investment_debate_state["count"] + 1,
+            "count": investment_debate_state["count"],  # Keep current count
         }
 
-        return {"investment_debate_state": new_investment_debate_state}
+        # Increment the count for the next step
+        updated_state = {"investment_debate_state": new_investment_debate_state}
+        updated_state = increment_debate_count(updated_state)
+
+        return updated_state
 
     return bull_crossex_node

@@ -2,6 +2,7 @@ from langchain_core.messages import AIMessage
 import time
 import json
 from tradingagents.blackboard.utils import create_agent_blackboard
+from tradingagents.agents.utils.debate_utils import increment_debate_count, get_debate_round_info
 
 
 def create_bull_researcher(llm, memory):
@@ -175,14 +176,23 @@ Provide a comprehensive analysis that builds upon previous rounds and directly a
 
         argument = f"Bull Analyst: {response.content}"
 
+        # Get current debate round information
+        round_info = get_debate_round_info(state)
+        current_round = round_info["round"]
+        current_step = round_info["step_name"]
+
         new_investment_debate_state = {
             "history": history + "\n" + argument,
             "bull_history": bull_history + "\n" + argument,
             "bear_history": investment_debate_state.get("bear_history", ""),
             "current_response": argument,
-            "count": investment_debate_state["count"] + 1,
+            "count": investment_debate_state["count"],  # Keep current count
         }
 
-        return {"investment_debate_state": new_investment_debate_state}
+        # Increment the count for the next step
+        updated_state = {"investment_debate_state": new_investment_debate_state}
+        updated_state = increment_debate_count(updated_state)
+
+        return updated_state
 
     return bull_node
