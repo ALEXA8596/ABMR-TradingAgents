@@ -4,7 +4,7 @@ import json
 from tradingagents.blackboard.utils import create_agent_blackboard
 
 
-def create_market_analyst(llm, toolkit):
+def create_quant_market_analyst(llm, toolkit):
 
     def market_analyst_node(state):
         current_date = state["trade_date"]

@@ -69,6 +69,13 @@ class GraphSetup:
             delete_nodes["market"] = create_msg_delete()
             tool_nodes["market"] = self.tool_nodes["market"]
 
+        if "quant_market" in selected_analysts:
+            analyst_nodes["quant_market"] = create_quant_market_analyst(
+                self.quick_thinking_llm, self.toolkit
+            )
+            delete_nodes["quant_market"] = create_msg_delete()
+            tool_nodes["quant_market"] = self.tool_nodes["market"]  # Use same tools as market analyst
+
         if "social" in selected_analysts:
             analyst_nodes["social"] = create_social_media_analyst(
                 self.quick_thinking_llm, self.toolkit
