@@ -1,4 +1,5 @@
 {
+    "liquid": 0,
     "portfolio": {
         "AAPL": {
             "totalAmount": 15000.0,

@@ -250,6 +250,7 @@ class GraphSetup:
                 "Risk Judge": "Risk Judge",
             },
         )
+        
         workflow.add_conditional_edges(
             "Neutral Analyst",
             self.conditional_logic.should_continue_risk_analysis,

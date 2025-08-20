@@ -12,3 +12,11 @@ venv/
 /tools/dataflow_fixtures/node_modules
 /tools/dataflow_fixtures/finnhub_data
 /tools/dataflow_fixtures/reddit_data
+/tools/dataflow_fixtures/debug_raw_news
+/tools/dataflow_fixtures/debug_raw_worldnews
+/tools/dataflow_fixtures/perplexity_macro_news
+/tools/dataflow_fixtures/reddit_news_data
+/tools/dataflow_fixtures/reddit_worldnews_data
+/tools/dataflow_fixtures/simfin_data
+/tools/dataflow_fixtures/simfin
+/tools/dataflow_fixtures/gnews_data

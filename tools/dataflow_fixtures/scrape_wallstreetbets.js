@@ -49,7 +49,7 @@ const ticker_to_company = {
 async function fetchRedditJSON(subreddit, after = null, limit = 100) {
     // This function now takes a query string and after token
     // subreddit is always 'wallstreetbets' here
-    let url = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(after.q)}&limit=${after.limit || 100}&sort=new`;
+    let url = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(after.q)}&limit=${after.limit || 100}&sort=new&restrict_sr=1`;
     if (after.after) url += `&after=${after.after}`;
     const res = await fetch(url, {
         headers: { 'User-Agent': 'node:abmr-fixture:v1.0' }
