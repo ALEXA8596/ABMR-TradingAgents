@@ -19,7 +19,7 @@ def create_bear_crossex_researcher(llm, memory):
         
         print(f"[DEBUG] Current count: {investment_debate_state.get('count', 0)}")
         print(f"[DEBUG] Bull response: {str(bull_response)[:100]}...")
-
+        
         # Get current debate round information
         round_info = get_debate_round_info(state)
         current_round = round_info["round"]
@@ -27,12 +27,8 @@ def create_bear_crossex_researcher(llm, memory):
         
         print(f"[DEBUG] Round: {current_round}, Step: {current_step}")
 
-        curr_situation = f"Bull Response: {bull_response}"
-        past_memories = memory.get_memories(curr_situation, n_matches=2)
-
-        past_memory_str = ""
-        for i, rec in enumerate(past_memories, 1):
-            past_memory_str += rec["recommendation"] + "\n\n"
+        # Get past memory for context
+        past_memory_str = memory.get_past_memory("investment_debate", state["company_of_interest"])
 
         json_format = """{
   "questions": [{
@@ -121,8 +117,7 @@ The content of the questions and rebuttals should be detailed and evidence-based
         updated_state = {"investment_debate_state": new_investment_debate_state}
         updated_state = increment_debate_count(updated_state)
         
-        print(f"[DEBUG] Bear Cross Examination Researcher completed. New count: {updated_state['investment_debate_state']['count']}")
-
+        # Return the complete state update
         return updated_state
 
     return bear_crossex_node

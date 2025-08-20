@@ -14,9 +14,6 @@ def create_research_manager(llm, memory):
         bear_history = investment_debate_state.get("bear_history", "[]")
         
         print(f"[DEBUG] Research Manager: Count = {investment_debate_state.get('count', 0)}")
-        print(f"[DEBUG] Research Manager: History length = {len(history)}")
-        print(f"[DEBUG] Research Manager: Bull history length = {len(bull_history)}")
-        print(f"[DEBUG] Research Manager: Bear history length = {len(bear_history)}")
 
         market_research_report = state["market_report"]
         sentiment_report = state["sentiment_report"]
@@ -114,16 +111,13 @@ Respond ONLY with a valid JSON object in the following format:
         )
 
         new_investment_debate_state = {
-            "judge_decision": response.content,
-            "history": investment_debate_state.get("history", "[]"),
-            "bear_history": investment_debate_state.get("bear_history", "[]"),
-            "bull_history": investment_debate_state.get("bull_history", "[]"),
+            "history": history,
+            "bull_history": bull_history,
+            "bear_history": bear_history,
             "current_response": response.content,
+            "judge_decision": decision,
             "count": investment_debate_state["count"],
         }
-        
-        print(f"[DEBUG] Research Manager: Final state count = {new_investment_debate_state['count']}")
-        print(f"[DEBUG] Research Manager: Decision = {decision}, Confidence = {confidence}")
 
         return {
             "investment_debate_state": new_investment_debate_state,

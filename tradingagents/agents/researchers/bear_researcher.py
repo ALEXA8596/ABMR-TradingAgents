@@ -183,8 +183,6 @@ Provide a comprehensive analysis that builds upon previous rounds and directly a
         current_round = round_info["round"]
         current_step = round_info["step_name"]
         
-        print(f"[DEBUG] Bear Researcher: Round {current_round}, Step {current_step}, Count {investment_debate_state['count']}")
-
         # Parse history fields as JSON arrays
         try:
             history_list = json.loads(history) if history else []
@@ -213,8 +211,6 @@ Provide a comprehensive analysis that builds upon previous rounds and directly a
         updated_state = {"investment_debate_state": new_investment_debate_state}
         updated_state = increment_debate_count(updated_state)
         
-        print(f"[DEBUG] Bear Researcher completed. New count: {updated_state['investment_debate_state']['count']}")
-
         # Return the complete state update
         return updated_state
 
