@@ -73,6 +73,7 @@ def create_portfolio_optimizer(llm, memory, toolkit):
 - **News Report**: {news_report}
 - **Fundamentals Report**: {fundamentals_report}
 - **Past Portfolio Lessons**: {past_memory_str}
+- **Blackboard Context**: {blackboard_context}
 
 **DELIVERABLE STRUCTURE:**
 Create a detailed markdown report covering:

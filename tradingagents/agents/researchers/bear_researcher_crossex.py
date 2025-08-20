@@ -28,8 +28,18 @@ def create_bear_crossex_researcher(llm, memory):
         print(f"[DEBUG] Round: {current_round}, Step: {current_step}")
 
         # Get past memory for context
-        past_memory_str = memory.get_past_memory("investment_debate", state["company_of_interest"])
+        curr_situation = f"Bull Response: {bull_response}"
+        past_memories = memory.get_memories(curr_situation, n_matches=2)
+        past_memory_str = ""
+        for i, rec in enumerate(past_memories, 1):
+            past_memory_str += rec["recommendation"] + "\n\n"
 
+        # Blackboard integration
+        from tradingagents.blackboard.utils import create_agent_blackboard
+        blackboard_agent = create_agent_blackboard("BECR_001", "BearCrossExaminer")
+        
+        ticker = state["company_of_interest"]
+        
         json_format = """{
   "questions": [{
       "question": "...", // Question for the bull researcher
@@ -41,23 +51,49 @@ def create_bear_crossex_researcher(llm, memory):
   }, ...]
 }"""
 
-        prompt = f"""You are a Bear Analyst conducting a cross-examination of the Bull Analyst's arguments in Round {current_round}. Your goal is to critically analyze the bull's response, generate insightful questions, and provide strong rebuttals to their claims.
+        # Read full debate context for multi-round debates
+        debate_round = investment_debate_state["count"] + 1
+        recent_debate = blackboard_agent.get_debate_comments(topic=f"{ticker} Investment Debate")
+        debate_context = ""
+        if recent_debate:
+            debate_context += f"\n\nDEBATE ROUND {debate_round} - Previous Debate Context:\n"
+            for comment in recent_debate[-6:]:  # Last 6 comments for context (3 agents x 2 rounds)
+                content = comment.get('content', {})
+                debate_context += f"- {comment['sender'].get('role', 'Unknown')}: {content.get('position', 'N/A')} - {content.get('argument', 'N/A')[:200]}...\n"
 
-Current Debate Status: Round {current_round}, {current_step} Step
+        prompt = f"""As the Bear Cross-Examination Researcher, your role is to critically examine the bullish analyst's arguments, identify weaknesses, and provide compelling counter-arguments. You should focus on challenging assumptions, highlighting inconsistencies, and strengthening the bearish case.
 
-Key points to focus on:
+DEBATE ROUND {debate_round}: This is round {debate_round} of the investment debate. You are cross-examining the bullish analyst's arguments from the previous round.
 
-- Questions: Formulate questions that challenge the bull's assumptions, data, or reasoning.
-- Rebuttals: Provide counterarguments to the bull's claims, using evidence and sound logic.
+{debate_context}
 
-Resources available:
-Bull's latest response: {bull_response}
-Reflections from similar situations and lessons learned: {past_memory_str}
+Bullish Analyst's Response to Cross-Examine:
+{bull_response}
 
-Respond ONLY with a valid JSON object in the following format:
-{json_format}
-The content of the questions and rebuttals should be detailed and evidence-based. Source indicates where the information was obtained from, such as the bull's response or past reflections.
-"""
+Current Market Situation:
+Market Research: {state.get('market_report', 'N/A')}
+Social Media Sentiment: {state.get('sentiment_report', 'N/A')}
+News Analysis: {state.get('news_report', 'N/A')}
+Fundamentals: {state.get('fundamentals_report', 'N/A')}
+
+Your task is to:
+1. Critically analyze the bullish analyst's arguments
+2. Identify logical fallacies, weak evidence, or flawed assumptions
+3. Provide compelling counter-arguments with specific evidence
+4. Strengthen the overall bearish case
+5. Consider the broader debate context
+6. Maintain a critical but constructive tone
+
+Focus on:
+- Questioning the validity of bullish claims
+- Highlighting contradictory evidence
+- Identifying overlooked negative factors
+- Providing alternative interpretations
+- Strengthening bearish arguments
+
+Respond in the following JSON format:
+{json_format}"""
+
         response = llm.invoke(prompt)
 
         # Parse the JSON from the LLM response

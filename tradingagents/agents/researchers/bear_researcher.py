@@ -38,7 +38,7 @@ def create_bear_researcher(llm, memory):
         debate_context = ""
         if recent_debate:
             debate_context += f"\n\nDEBATE ROUND {debate_round} - Previous Debate Context:\n"
-            for comment in recent_debate[-4:]:  # Last 4 comments for context
+            for comment in recent_debate[-6:]:  # Last 6 comments for context (3 agents x 2 rounds)
                 content = comment.get('content', {})
                 debate_context += f"- {comment['sender'].get('role', 'Unknown')}: {content.get('position', 'N/A')} - {content.get('argument', 'N/A')[:200]}...\n"
 
@@ -79,36 +79,36 @@ def create_bear_researcher(llm, memory):
     }, ...]
 }"""
 
-        prompt = f"""You are a Bear Analyst advocating against investing in the stock. Your task is to build a strong, evidence-based case emphasizing risks, challenges, and negative market indicators. Leverage the provided research and data to address concerns and counter bullish arguments effectively.
+        prompt = f"""As the Bearish Research Analyst, your role is to identify and articulate the risks, challenges, and potential downsides of investing in the company. You should focus on valuation concerns, competitive threats, market risks, and negative catalysts.
 
-DEBATE ROUND {debate_round}: This is round {debate_round} of the debate. If this is round 1, provide your initial bearish argument. If this is a later round, build upon your previous arguments and directly address the bull analyst's counter-arguments from the previous round.
+DEBATE ROUND {debate_round}: This is round {debate_round} of the investment debate. If this is round 1, provide your initial bearish position. If this is a later round, build upon your previous arguments and directly address the bullish analyst's counter-arguments from the previous round.
 
 {blackboard_context}
 {debate_context}
-{research_context}
 
 Current Market Situation:
-{curr_situation}
-
-Past Memories and Lessons:
-{past_memory_str}
+Market Research: {market_research_report}
+Social Media Sentiment: {sentiment_report}
+News Analysis: {news_report}
+Fundamentals: {fundamentals_report}
 
 Your task is to:
-1. Analyze the current market data and research reports
-2. Build a compelling bearish case for {ticker}
-3. Address any bullish concerns raised in previous debate rounds
-4. Provide specific evidence and reasoning
+1. Analyze the market conditions and company fundamentals
+2. Build a compelling bearish case with specific evidence
+3. Address potential bullish arguments proactively
+4. Provide concrete examples and data points
 5. Consider the debate context and previous arguments
-6. Maintain a critical but balanced tone
+6. Maintain a cautious but data-driven tone
 
 Focus on:
-- Risks and challenges analysis
-- Competitive weaknesses identification
+- Valuation concerns and overvaluation risks
+- Competitive threats and market challenges
 - Negative market indicators and trends
-- Counter-arguments to bullish claims
-- Specific evidence from the provided data
+- Counter-arguments to bullish concerns
+- Evidence from provided data and research
 
-Provide a comprehensive analysis that builds upon previous rounds and directly addresses the ongoing debate."""
+Respond in the following JSON format:
+{json_format}"""
 
         response = llm.invoke(prompt)
 

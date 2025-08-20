@@ -19,6 +19,28 @@ def create_quant_options_manager(llm, memory, toolkit):
         ticker = state["company_of_interest"]
         trade_date = state.get("trade_date", datetime.now().strftime("%Y-%m-%d"))
 
+        # Blackboard integration
+        blackboard_agent = create_agent_blackboard("QOM_001", "QuantOptionsManager")
+        
+        # Read recent analyst reports and investment decisions for context
+        recent_analyses = blackboard_agent.get_analysis_reports(ticker=ticker)
+        recent_decisions = blackboard_agent.get_investment_decisions(ticker=ticker)
+        
+        blackboard_context = ""
+        if recent_analyses:
+            blackboard_context += "\n\nRecent Analyst Reports on Blackboard:\n"
+            for analysis in recent_analyses[-3:]:  # Last 3 analyses
+                content = analysis.get('content', {})
+                analysis_data = content.get('analysis', {})
+                if isinstance(analysis_data, dict):
+                    blackboard_context += f"- {analysis['sender'].get('role', 'Unknown')}: {analysis_data.get('recommendation', 'N/A')} (Confidence: {analysis_data.get('confidence', 'N/A')})\n"
+        
+        if recent_decisions:
+            blackboard_context += "\n\nRecent Investment Decisions on Blackboard:\n"
+            for decision in recent_decisions[-2:]:  # Last 2 decisions
+                content = decision.get('content', {})
+                blackboard_context += f"- Decision: {content.get('decision', 'N/A')} (Confidence: {content.get('confidence', 'N/A')})\n"
+
         # Prepare enterprise results directory
         results_root = toolkit.config.get("results_dir", "./results")
         reports_dir = os.path.join(results_root, ticker, trade_date, "reports")
@@ -124,7 +146,7 @@ def create_quant_options_manager(llm, memory, toolkit):
                 "findings": quant_findings,
                 "selected": selected_strategies,
             }, indent=2))
-            lines.append("````\n")
+            lines.append("```\n")
             with open(md_path, "w", encoding="utf-8") as f_md:
                 f_md.write("\n".join(lines))
         except Exception:
@@ -132,8 +154,7 @@ def create_quant_options_manager(llm, memory, toolkit):
 
         # Blackboard logging for enterprise visibility
         try:
-            bb = create_agent_blackboard("QOM_001", "QuantOptionsManager")
-            bb.post_investment_decision(
+            blackboard_agent.post_investment_decision(
                 ticker=ticker,
                 decision="Quant Strategy Scan",
                 reasoning=str(selected_strategies),
@@ -160,5 +181,3 @@ def create_quant_options_manager(llm, memory, toolkit):
         }
 
     return quant_options_manager_node
-
-
