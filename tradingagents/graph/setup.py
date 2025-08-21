@@ -69,6 +69,20 @@ class GraphSetup:
             delete_nodes["market"] = create_msg_delete()
             tool_nodes["market"] = self.tool_nodes["market"]
 
+        if "quant_market" in selected_analysts:
+            analyst_nodes["quant_market"] = create_quant_market_analyst(
+                self.quick_thinking_llm, self.toolkit
+            )
+            delete_nodes["quant_market"] = create_msg_delete()
+            tool_nodes["quant_market"] = self.tool_nodes["market"]  # Use same tools as market analyst
+
+        if "macroeconomic" in selected_analysts:
+            analyst_nodes["macroeconomic"] = create_macroeconomic_analyst(
+                self.quick_thinking_llm, self.toolkit
+            )
+            delete_nodes["macroeconomic"] = create_msg_delete()
+            tool_nodes["macroeconomic"] = self.tool_nodes["market"]  # Use same tools as market analyst
+
         if "social" in selected_analysts:
             analyst_nodes["social"] = create_social_media_analyst(
                 self.quick_thinking_llm, self.toolkit
@@ -124,7 +138,10 @@ class GraphSetup:
             self.deep_thinking_llm, self.risk_manager_memory, toolkit=self.toolkit
         )
 
-        # Portfolio optimizer node
+        # Quant options manager and Portfolio optimizer nodes
+        quant_options_manager_node = create_quant_options_manager(
+            self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
+        )
         portfolio_optimizer_node = create_portfolio_optimizer(
             self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
         )
@@ -155,6 +172,7 @@ class GraphSetup:
         workflow.add_node("Risk Judge", risk_manager_node)
         workflow.add_node("Msg Clear Risk Judge", delete_nodes["riskJudge"])
         workflow.add_node("tools_Risk Judge", tool_nodes["riskJudge"])
+        workflow.add_node("Quant Options Manager", quant_options_manager_node)
         workflow.add_node("Portfolio Optimizer", portfolio_optimizer_node)
 
         # Define edges
@@ -200,9 +218,9 @@ class GraphSetup:
             self.conditional_logic.should_continue_debate,
             {
                 "Bear Researcher": "Bear Researcher",
-                "Research Manager": "Research Manager",
                 "Bull Cross Examination Researcher": "Bull Cross Examination Researcher",
                 "Bear Cross Examination Researcher": "Bear Cross Examination Researcher",
+                "Research Manager": "Research Manager",
             },
         )
         workflow.add_conditional_edges(
@@ -210,29 +228,29 @@ class GraphSetup:
             self.conditional_logic.should_continue_debate,
             {
                 "Bull Researcher": "Bull Researcher",
-                "Research Manager": "Research Manager",
                 "Bull Cross Examination Researcher": "Bull Cross Examination Researcher",
                 "Bear Cross Examination Researcher": "Bear Cross Examination Researcher",
+                "Research Manager": "Research Manager",
             },
         )
         workflow.add_conditional_edges(
             "Bull Cross Examination Researcher",
             self.conditional_logic.should_continue_debate,
             {
-                "Bear Cross Examination Researcher": "Bear Cross Examination Researcher",
-                "Research Manager": "Research Manager",
                 "Bull Researcher": "Bull Researcher",
                 "Bear Researcher": "Bear Researcher",
+                "Bear Cross Examination Researcher": "Bear Cross Examination Researcher",
+                "Research Manager": "Research Manager",
             },
         )
         workflow.add_conditional_edges(
             "Bear Cross Examination Researcher",
             self.conditional_logic.should_continue_debate,
             {
-                "Bull Cross Examination Researcher": "Bull Cross Examination Researcher",
-                "Research Manager": "Research Manager",
                 "Bull Researcher": "Bull Researcher",
                 "Bear Researcher": "Bear Researcher",
+                "Bull Cross Examination Researcher": "Bull Cross Examination Researcher",
+                "Research Manager": "Research Manager",
             },
         )
         workflow.add_edge("Research Manager", "Trader")
@@ -264,8 +282,18 @@ class GraphSetup:
             },
         )
 
-        # Direct flow from Risk Judge (after clearing) to Portfolio Optimizer to END
-        workflow.add_edge("Msg Clear Risk Judge", "Portfolio Optimizer")
+        # Direct flow from Risk Judge (after clearing) to Quant Options Manager to Portfolio Optimizer to  END
+        workflow.add_edge("Msg Clear Risk Judge", "Quant Options Manager")
+
+        workflow.add_conditional_edges(
+            "Risk Judge",
+            self.conditional_logic.should_continue_portfolio_flow,
+            {
+                "Quant Options Manager": "Quant Options Manager",
+                "END": END,
+            },
+        )
+        workflow.add_edge("Quant Options Manager", "Portfolio Optimizer")
         workflow.add_edge("Portfolio Optimizer", END)
 
         # Compile and return

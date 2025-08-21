@@ -2,6 +2,7 @@ from langchain_core.messages import AIMessage
 import time
 import json
 from tradingagents.blackboard.utils import create_agent_blackboard
+from tradingagents.agents.utils.debate_utils import increment_debate_count, get_debate_round_info
 
 
 def create_bull_researcher(llm, memory):
@@ -37,7 +38,7 @@ def create_bull_researcher(llm, memory):
         debate_context = ""
         if recent_debate:
             debate_context += f"\n\nDEBATE ROUND {debate_round} - Previous Debate Context:\n"
-            for comment in recent_debate[-4:]:  # Last 4 comments for context
+            for comment in recent_debate[-6:]:  # Last 6 comments for context (3 agents x 2 rounds)
                 content = comment.get('content', {})
                 debate_context += f"- {comment['sender'].get('role', 'Unknown')}: {content.get('position', 'N/A')} - {content.get('argument', 'N/A')[:200]}...\n"
 
@@ -78,36 +79,36 @@ def create_bull_researcher(llm, memory):
     }, ]
 }"""
 
-        prompt = f"""You are a Bull Analyst advocating for investing in the stock. Your task is to build a strong, evidence-based case emphasizing growth potential, competitive advantages, and positive market indicators. Leverage the provided research and data to address concerns and counter bearish arguments effectively.
+        prompt = f"""As the Bullish Research Analyst, your role is to build a compelling case for why the company represents a strong investment opportunity. You should focus on growth potential, market opportunities, competitive advantages, and positive catalysts.
 
-DEBATE ROUND {debate_round}: This is round {debate_round} of the debate. If this is round 1, provide your initial bullish argument. If this is a later round, build upon your previous arguments and directly address the bear analyst's counter-arguments from the previous round.
+DEBATE ROUND {debate_round}: This is round {debate_round} of the investment debate. If this is round 1, provide your initial bullish position. If this is a later round, build upon your previous arguments and directly address the bearish analyst's counter-arguments from the previous round.
 
 {blackboard_context}
 {debate_context}
-{research_context}
 
 Current Market Situation:
-{curr_situation}
-
-Past Memories and Lessons:
-{past_memory_str}
+Market Research: {market_research_report}
+Social Media Sentiment: {sentiment_report}
+News Analysis: {news_report}
+Fundamentals: {fundamentals_report}
 
 Your task is to:
-1. Analyze the current market data and research reports
-2. Build a compelling bullish case for {ticker}
-3. Address any bearish concerns raised in previous debate rounds
-4. Provide specific evidence and reasoning
+1. Analyze the market conditions and company fundamentals
+2. Build a compelling bullish case with specific evidence
+3. Address potential bearish concerns proactively
+4. Provide concrete examples and data points
 5. Consider the debate context and previous arguments
-6. Maintain a confident but balanced tone
+6. Maintain a confident but data-driven tone
 
 Focus on:
 - Growth potential and market opportunities
-- Competitive advantages and positioning
-- Positive financial indicators and trends
+- Competitive advantages and innovation
+- Positive market indicators and trends
 - Counter-arguments to bearish concerns
-- Specific evidence from the provided data
+- Evidence from provided data and research
 
-Provide a comprehensive analysis that builds upon previous rounds and directly addresses the ongoing debate."""
+Respond in the following JSON format:
+{json_format}"""
 
         response = llm.invoke(prompt)
 
@@ -175,14 +176,40 @@ Provide a comprehensive analysis that builds upon previous rounds and directly a
 
         argument = f"Bull Analyst: {response.content}"
 
+        # Get current debate round information
+        round_info = get_debate_round_info(state)
+        current_round = round_info["round"]
+        current_step = round_info["step_name"]
+        
+        # Parse history fields as JSON arrays
+        try:
+            history_list = json.loads(history) if history else []
+        except Exception:
+            history_list = []
+        
+        try:
+            bull_history_list = json.loads(bull_history) if bull_history else []
+        except Exception:
+            bull_history_list = []
+        
+        # Append new argument
+        history_list.append(argument)
+        bull_history_list.append(argument)
+
         new_investment_debate_state = {
-            "history": history + "\n" + argument,
-            "bull_history": bull_history + "\n" + argument,
-            "bear_history": investment_debate_state.get("bear_history", ""),
+            "history": json.dumps(history_list),
+            "bull_history": json.dumps(bull_history_list),
+            "bear_history": investment_debate_state.get("bear_history", "[]"),
             "current_response": argument,
-            "count": investment_debate_state["count"] + 1,
+            "judge_decision": investment_debate_state.get("judge_decision", ""),
+            "count": investment_debate_state["count"],  # Keep current count
         }
 
-        return {"investment_debate_state": new_investment_debate_state}
+        # Increment the count for the next step
+        updated_state = {"investment_debate_state": new_investment_debate_state}
+        updated_state = increment_debate_count(updated_state)
+        
+        # Return the complete state update
+        return updated_state
 
     return bull_node

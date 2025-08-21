@@ -12,3 +12,4 @@ venv/
 node_modules
 archive
 data
+*.jsonl
