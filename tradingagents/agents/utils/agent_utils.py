@@ -49,6 +49,8 @@ class Toolkit:
     def __init__(self, config=None):
         if config:
             self.update_config(config)
+            
+    
 
     @staticmethod
     @tool
@@ -422,7 +424,7 @@ class Toolkit:
 
     @staticmethod
     @tool
-    def get_portfolio(ticker: Annotated[str, "Ticker of the company to get portfolio info for"]):
+    def get_portfolio(ticker: Annotated[str, "Ticker of the company to get portfolio info for"], date: Annotated[str, "Date in yyyy-mm-dd format"]):
         """Retrieve current portfolio information for a given ticker."""
         portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json")
         if not os.path.exists(portfolio_path):
@@ -431,16 +433,31 @@ class Toolkit:
         stockportfolio = portfolio.get(ticker, {})
         if not stockportfolio:
             return f"No holdings for {ticker} in portfolio."
+
+        max_shares = round(stockportfolio.get('liquid', 0) / interface.get_price_from_csv(ticker, date), 2)
+
         returned = f"""
 # Portfolio
 #### Current Liquidity: {stockportfolio.get('liquid', 0)}
 #### {ticker} Holdings: {stockportfolio.get('totalAmount', 0)} shares
+#### Max Shares Available to Purchase: {max_shares} shares
 """
         return returned
+    
+    @staticmethod
+    @tool
+    def get_price(ticker: Annotated[str, "Ticker of the company to get price for"], date: Annotated[str, "Date in yyyy-mm-dd format"]):
+        """Retrieve the price for a given ticker on a given date from local CSV data."""
+        try:
+            price = interface.get_price_from_csv(ticker, date)
+            return f"Price for {ticker} on {date} is ${price:.2f}."
+        except Exception as e:
+            return f"Error retrieving price for {ticker} on {date}: {str(e)}"
 
     @staticmethod
     @tool
     def buy(ticker, date: Annotated[str, "Date of the purchase in yyyy-mm-dd format"], quantity = 1):
+        """Tool wrapper for buying shares of a ticker on a specific date."""
         if not ticker or not date:
             return "Ticker and date must be provided for buying shares. Please provide both and try again."
         # Delegate to implementation
@@ -456,11 +473,14 @@ class Toolkit:
                 json.dump({}, f)
 
         portfolio = json.load(open(portfolio_path, "r"))
-        stockportfolio = portfolio.get(ticker, {})
+        stockportfolio = portfolio.get(ticker, {
+            "totalAmount": 0,
+            "trades": []
+        })
         # Initialize fields
-        stockportfolio['shares'] = stockportfolio.get('shares', 0) + quantity
-        if 'transactions' not in stockportfolio:
-            stockportfolio['transactions'] = []
+        stockportfolio['totalAmount'] = stockportfolio.get('totalAmount', 0) + quantity
+        if 'trades' not in stockportfolio:
+            stockportfolio['trades'] = []
 
         # Get current price for the ticker
         try:
@@ -469,7 +489,7 @@ class Toolkit:
         except Exception:
             current_price = 0.0
 
-        total_value = stockportfolio['shares'] * current_price
+        total_value = stockportfolio['totalAmount'] * current_price
         transaction = {
             "date": date,
             "type": "BUY",
@@ -477,8 +497,12 @@ class Toolkit:
             "price_per_share": current_price,
             "total_value": total_value,
         }
-        stockportfolio['transactions'].append(transaction)
+        stockportfolio['trades'].append(transaction)
         portfolio[ticker] = stockportfolio
+        portfolio['liquid'] = portfolio.get('liquid', 0) - (quantity * current_price)
+        # Ensure liquid amount is not negative
+        if portfolio['liquid'] < 0:
+            portfolio['liquid'] = 0
         with open(portfolio_path, "w") as f:
             json.dump(portfolio, f, indent=2)
         return f"Bought {quantity} shares of {ticker}."
@@ -500,9 +524,12 @@ class Toolkit:
                 json.dump({}, f)
 
         portfolio = json.load(open(portfolio_path, "r"))
-        stockportfolio = portfolio.get(ticker, {})
-        if 'transactions' not in stockportfolio:
-            stockportfolio['transactions'] = []
+        stockportfolio = portfolio.get(ticker, {
+            "totalAmount": 0,
+            "trades": []
+        })
+        if 'trades' not in stockportfolio:
+            stockportfolio['trades'] = []
 
         transaction = {
             "date": date,
@@ -512,7 +539,7 @@ class Toolkit:
             "total_value": None,
             "note": note,
         }
-        stockportfolio['transactions'].append(transaction)
+        stockportfolio['trades'].append(transaction)
         portfolio[ticker] = stockportfolio
         with open(portfolio_path, "w") as f:
             json.dump(portfolio, f, indent=2)
@@ -521,7 +548,7 @@ class Toolkit:
     @staticmethod
     @tool
     def sell(ticker, date: Annotated[str, "Date of the sale in yyyy-mm-dd format"], quantity = 1):
-        
+        """Tool wrapper for selling shares of a ticker on a specific date."""
         if not ticker or not date:
             return "Ticker and date must be provided for selling shares. Please provide both and try again."
         # Delegate to implementation
@@ -536,8 +563,11 @@ class Toolkit:
         if not os.path.exists(portfolio_path):
             return f"No portfolio exists to sell {ticker}."
         portfolio = json.load(open(portfolio_path, "r"))
-        stockportfolio = portfolio.get(ticker, {})
-        current_shares = stockportfolio.get('shares', 0)
+        stockportfolio = portfolio.get(ticker, {
+            "totalAmount": 0,
+            "trades": []
+        })
+        current_shares = stockportfolio.get('totalAmount', 0)
         if current_shares <= 0:
             return f"No shares of {ticker} to sell."
         sell_qty = min(quantity, current_shares)
@@ -548,18 +578,22 @@ class Toolkit:
         except Exception:
             current_price = 0.0
 
-        stockportfolio['shares'] = current_shares - sell_qty
-        if 'transactions' not in stockportfolio:
-            stockportfolio['transactions'] = []
+        stockportfolio['totalAmount'] = current_shares - sell_qty
+        if 'trades' not in stockportfolio:
+            stockportfolio['trades'] = []
         transaction = {
             "date": date,
             "type": "SELL",
             "quantity": sell_qty,
             "price_per_share": current_price,
-            "total_value": stockportfolio['shares'] * current_price,
+            "total_value": stockportfolio['totalAmount'] * current_price,
         }
-        stockportfolio['transactions'].append(transaction)
+        stockportfolio['trades'].append(transaction)
         portfolio[ticker] = stockportfolio
+        portfolio['liquid'] = portfolio.get('liquid', 0) + (sell_qty * current_price)
+        # Ensure liquid amount is not negative
+        if portfolio['liquid'] < 0:
+            portfolio['liquid'] = 0
         with open(portfolio_path, "w") as f:
             json.dump(portfolio, f, indent=2)
         return f"Sold {sell_qty} shares of {ticker}."
@@ -1368,7 +1402,7 @@ class Toolkit:
     ) -> dict:
         """
         Calculate portfolio beta relative to a benchmark index.
-        Reads tickers from portfolio.example.json if weights not provided.
+        Reads tickers from portfolio.json if weights not provided.
         Args:
             portfolio_weights (dict): Portfolio weights for each ticker (optional)
             benchmark_ticker (str): Benchmark ticker symbol (default: SPY)
@@ -1379,7 +1413,7 @@ class Toolkit:
         
         try:
             # Read portfolio data to get tickers and weights if not provided
-            portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.example.json")
+            portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json")
             
             try:
                 with open(portfolio_path, 'r') as f:
@@ -1577,7 +1611,7 @@ class Toolkit:
     ) -> dict:
         """
         Design comprehensive multi-asset hedging strategy for portfolio protection.
-        Reads tickers from portfolio.example.json if weights not provided.
+        Reads tickers from portfolio.json if weights not provided.
         Args:
             portfolio_weights (dict): Portfolio weights for each ticker (optional)
             hedge_types (list): Types of hedges to analyze (optional)
@@ -1589,7 +1623,7 @@ class Toolkit:
         
         try:
             # Read portfolio data to get tickers and weights if not provided
-            portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.example.json")
+            portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json")
             
             try:
                 with open(portfolio_path, 'r') as f:

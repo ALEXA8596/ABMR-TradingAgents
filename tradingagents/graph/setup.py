@@ -190,8 +190,8 @@ class GraphSetup:
             ["tools_Risk Judge", "Msg Clear Risk Judge"]
         )
         workflow.add_edge("tools_Risk Judge", "Risk Judge")
-        workflow.add_edge("Risk Judge", "Msg Clear Risk Judge")
-        workflow.add_edge("Msg Clear Risk Judge", "Trader")
+        # Removed unconditional edge from Risk Judge to Msg Clear Risk Judge to ensure tools can run
+        # Removed edge from Msg Clear Risk Judge to Trader; flow now proceeds to Portfolio Optimizer only
         
 
         # Add remaining edges
@@ -236,17 +236,6 @@ class GraphSetup:
             },
         )
         workflow.add_edge("Research Manager", "Trader")
-
-
-
-        # workflow.add_conditional_edges(
-        #     "Trader",
-        #     self.conditional_logic.should_continue_trader,
-        #     ["tools_trader", "Msg Clear Trader"]
-        # )
-        
-        # workflow.add_node("tools_trader", self.tool_nodes["trader"])
-        # workflow.add_edge("tools_trader", "Trader")
         
         workflow.add_edge("Trader", "Risky Analyst")
         workflow.add_conditional_edges(
@@ -275,15 +264,9 @@ class GraphSetup:
             },
         )
 
-        workflow.add_conditional_edges(
-            "Risk Judge",
-            self.conditional_logic.should_continue_portfolio_flow,
-            {
-                "Portfolio Optimizer": "Portfolio Optimizer",
-                "END": END,
-            },
-        )
-        workflow.add_edge("Portfolio Optimizer", "Risk Judge")
+        # Direct flow from Risk Judge (after clearing) to Portfolio Optimizer to END
+        workflow.add_edge("Msg Clear Risk Judge", "Portfolio Optimizer")
+        workflow.add_edge("Portfolio Optimizer", END)
 
         # Compile and return
         return workflow.compile()

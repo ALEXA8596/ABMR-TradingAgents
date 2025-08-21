@@ -207,7 +207,8 @@ class TradingAgentsGraph:
                     self.toolkit.buy,
                     self.toolkit.hold,
                     self.toolkit.sell,
-                    self.toolkit.get_portfolio
+                    self.toolkit.get_portfolio,
+                    self.toolkit.get_price,
                 ]
             ),
         }

@@ -27,7 +27,6 @@ def create_news_analyst(llm, toolkit):
             tools = [
                 toolkit.get_finnhub_news,
                 toolkit.get_reddit_news,
-                toolkit.get_google_news,
             ]
 
         system_message = (
