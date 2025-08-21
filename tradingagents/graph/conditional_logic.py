@@ -43,13 +43,20 @@ class ConditionalLogic:
             return "tools_fundamentals"
         return "Msg Clear Fundamentals"
     
-    def should_continue_trader(self, state: AgentState):
-        """Determine if trader should continue."""
+    # def should_continue_trader(self, state: AgentState):
+    #     """Determine if trader should continue."""
+    #     messages = state["messages"]
+    #     last_message = messages[-1]
+    #     if last_message.tool_calls:
+    #         return "tools_trader"
+    #     return "Msg Clear Trader"
+    def should_continue_risk_judgment(self, state: AgentState):
+        """Determine if risk judgment should continue."""
         messages = state["messages"]
         last_message = messages[-1]
         if last_message.tool_calls:
-            return "tools_trader"
-        return "Msg Clear Trader"
+            return "tools_Risk Judge"
+        return "Msg Clear Risk Judge"
 
     def should_continue_debate(self, state: AgentState) -> str:
         """Determine if debate should continue."""

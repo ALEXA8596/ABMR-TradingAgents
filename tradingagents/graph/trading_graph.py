@@ -201,12 +201,13 @@ class TradingAgentsGraph:
                 ]
             ),
             # Trader-specific tools (execution and portfolio helpers)
-            "trader": ToolNode(
+            "riskJudge": ToolNode(
                 [
                     # Execution tools
                     self.toolkit.buy,
                     self.toolkit.hold,
                     self.toolkit.sell,
+                    self.toolkit.get_portfolio
                 ]
             ),
         }

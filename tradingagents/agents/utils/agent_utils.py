@@ -419,7 +419,25 @@ class Toolkit:
         )
 
         return openai_fundamentals_results
-    
+
+    @staticmethod
+    @tool
+    def get_portfolio(ticker: Annotated[str, "Ticker of the company to get portfolio info for"]):
+        """Retrieve current portfolio information for a given ticker."""
+        portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json")
+        if not os.path.exists(portfolio_path):
+            return f"No portfolio exists."
+        portfolio = json.load(open(portfolio_path, "r"))
+        stockportfolio = portfolio.get(ticker, {})
+        if not stockportfolio:
+            return f"No holdings for {ticker} in portfolio."
+        returned = f"""
+# Portfolio
+#### Current Liquidity: {stockportfolio.get('liquid', 0)}
+#### {ticker} Holdings: {stockportfolio.get('totalAmount', 0)} shares
+"""
+        return returned
+
     @staticmethod
     @tool
     def buy(ticker, date: Annotated[str, "Date of the purchase in yyyy-mm-dd format"], quantity = 1):

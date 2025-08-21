@@ -6,8 +6,8 @@ from tradingagents.blackboard.utils import create_agent_blackboard
 from tradingagents.agents.utils.agent_utils import Toolkit
 
 
-def create_trader(llm, memory, toolkit=None):
-    # toolkit is supplied by the graph setup; fallback to Toolkit class if not provided
+def create_trader(llm, memory):
+
     def trader_node(state, name):
         ticker = state["company_of_interest"]
         investment_plan = state["investment_plan"]
@@ -109,10 +109,7 @@ Consider all the insights from analysts, risk managers, research managers, and c
             context,
         ]
 
-        # Supply buy/sell tools to the LLM so it can call them directly if it decides to execute a trade
-        tk = toolkit if toolkit is not None else Toolkit()
-        tools = [tk.buy, tk.sell]
-        result = llm.invoke(messages, tools=tools)
+        result = llm.invoke(messages)
 
         # Extract trade decision from response
         response_text = result.content.upper()

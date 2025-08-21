@@ -89,6 +89,9 @@ class GraphSetup:
             )
             delete_nodes["fundamentals"] = create_msg_delete()
             tool_nodes["fundamentals"] = self.tool_nodes["fundamentals"]
+        
+        tool_nodes["riskJudge"] = self.tool_nodes["riskJudge"]
+        delete_nodes["riskJudge"] = create_msg_delete()
 
         # Create researcher and manager nodes
         # Changed the models from quick thinking to deep thinking
@@ -111,15 +114,14 @@ class GraphSetup:
             self.deep_thinking_llm, self.bear_memory
         )
         
-        # Supply the toolkit instance to the trader so it can use provided tool implementations
-        trader_node = create_trader(self.quick_thinking_llm, self.trader_memory, toolkit=self.toolkit)
+        trader_node = create_trader(self.quick_thinking_llm, self.trader_memory)
 
         # Create risk analysis nodes
         risky_analyst = create_risky_debator(self.quick_thinking_llm)
         neutral_analyst = create_neutral_debator(self.quick_thinking_llm)
         safe_analyst = create_safe_debator(self.quick_thinking_llm)
         risk_manager_node = create_risk_manager(
-            self.deep_thinking_llm, self.risk_manager_memory
+            self.deep_thinking_llm, self.risk_manager_memory, toolkit=self.toolkit
         )
 
         # Portfolio optimizer node
@@ -151,6 +153,8 @@ class GraphSetup:
         workflow.add_node("Neutral Analyst", neutral_analyst)
         workflow.add_node("Safe Analyst", safe_analyst)
         workflow.add_node("Risk Judge", risk_manager_node)
+        workflow.add_node("Msg Clear Risk Judge", delete_nodes["riskJudge"])
+        workflow.add_node("tools_Risk Judge", tool_nodes["riskJudge"])
         workflow.add_node("Portfolio Optimizer", portfolio_optimizer_node)
 
         # Define edges
@@ -178,6 +182,17 @@ class GraphSetup:
                 workflow.add_edge(current_clear, next_analyst)
             else:
                 workflow.add_edge(current_clear, "Bull Researcher")
+
+        # Connect Risk Judge in sequence
+        workflow.add_conditional_edges(
+            "Risk Judge",
+            self.conditional_logic.should_continue_risk_judgment,
+            ["tools_Risk Judge", "Msg Clear Risk Judge"]
+        )
+        workflow.add_edge("tools_Risk Judge", "Risk Judge")
+        workflow.add_edge("Risk Judge", "Msg Clear Risk Judge")
+        workflow.add_edge("Msg Clear Risk Judge", "Trader")
+        
 
         # Add remaining edges
         workflow.add_conditional_edges(
@@ -224,14 +239,14 @@ class GraphSetup:
 
 
 
-        workflow.add_conditional_edges(
-            "Trader",
-            self.conditional_logic.should_continue_trader,
-            ["tools_trader", "Msg Clear Trader"]
-        )
+        # workflow.add_conditional_edges(
+        #     "Trader",
+        #     self.conditional_logic.should_continue_trader,
+        #     ["tools_trader", "Msg Clear Trader"]
+        # )
         
-        workflow.add_node("tools_trader", self.tool_nodes["trader"])
-        workflow.add_edge("tools_trader", "Trader")
+        # workflow.add_node("tools_trader", self.tool_nodes["trader"])
+        # workflow.add_edge("tools_trader", "Trader")
         
         workflow.add_edge("Trader", "Risky Analyst")
         workflow.add_conditional_edges(
