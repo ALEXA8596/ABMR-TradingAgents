@@ -30,10 +30,11 @@ class StockstatsUtils:
 
         if not online:
             try:
+                # print("Using offline tools to fetch data...")
                 data = pd.read_csv(
                     os.path.join(
                         data_dir,
-                        f"{symbol}-YFin-data-2015-01-01-2025-03-25.csv",
+                        f"{symbol}-YFin-data-2015-01-01-2025-07-27.csv",
                     )
                 )
                 df = wrap(data)

@@ -1,10 +1,11 @@
 {
+    "liquid": 100000,
     "portfolio": {
-        "AAPL": {
+        "EXAMPLE": {
             "totalAmount": 15000.0,
             "trades": [
                 {   
-                    "ticker": "AAPL",
+                    "ticker": "EXAMPLE",
                     "type": "BUY",
                     "quantity": 10,
                     "pricePerStockAtPurchase": 150.0,
@@ -12,7 +13,7 @@
                     "timestamp": "1690876800"
                 },
                 {   
-                    "ticker": "AAPL",
+                    "ticker": "EXAMPLE",
                     "type": "BUY",
                     "quantity": 5,
                     "pricePerStockAtPurchase": 175.0,
@@ -20,62 +21,12 @@
                     "timestamp": "1693555200"
                 },
                 {   
-                    "ticker": "AAPL",
+                    "ticker": "EXAMPLE",
                     "type": "BUY",
                     "quantity": 8,
                     "pricePerStockAtPurchase": 160.0,
                     "totalWorthAtPurchase": 1280.0,
                     "timestamp": "1696233600"
-                }
-            ]
-        },
-        "TSLA": {
-            "totalAmount": 12000.0,
-            "trades": [
-                {   
-                    "ticker": "TSLA",
-                    "type": "BUY",
-                    "quantity": 15,
-                    "pricePerStockAtPurchase": 200.0,
-                    "totalWorthAtPurchase": 3000.0,
-                    "timestamp": "1690876800"
-                },
-                {   
-                    "ticker": "TSLA",
-                    "type": "BUY",
-                    "quantity": 10,
-                    "pricePerStockAtPurchase": 250.0,
-                    "totalWorthAtPurchase": 2500.0,
-                    "timestamp": "1693555200"
-                },
-                {   
-                    "ticker": "AAPL",
-                    "type": "BUY",
-                    "quantity": 3,
-                    "pricePerStockAtPurchase": 180.0,
-                    "totalWorthAtPurchase": 540.0,
-                    "timestamp": "1698825600"
-                }
-            ]
-        },
-        "MSFT": {
-            "totalAmount": 8000.0,
-            "trades": [
-                {   
-                    "ticker": "MSFT",
-                    "type": "BUY",
-                    "quantity": 20,
-                    "pricePerStockAtPurchase": 300.0,
-                    "totalWorthAtPurchase": 6000.0,
-                    "timestamp": "1690876800"
-                },
-                {   
-                    "ticker": "MSFT",
-                    "type": "BUY",
-                    "quantity": 5,
-                    "pricePerStockAtPurchase": 350.0,
-                    "totalWorthAtPurchase": 1750.0,
-                    "timestamp": "1695513600"
                 }
             ]
         }

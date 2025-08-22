@@ -1,4 +1,4 @@
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.prompts import MessagesPlaceholder, ChatPromptTemplate
 import time
 import json
 from tradingagents.blackboard.utils import create_agent_blackboard

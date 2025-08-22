@@ -1,5 +1,5 @@
 from typing import Annotated, Dict
-from .reddit_utils import fetch_top_from_category
+from .reddit_utils import fetch_top_from_category, get_top_reddit_posts_for_ticker
 from .yfin_utils import *
 from .stockstats_utils import *
 from .googlenews_utils import *
@@ -15,6 +15,39 @@ import yfinance as yf
 from openai import OpenAI
 from .config import get_config, set_config, DATA_DIR
 
+def get_price_from_csv(
+    ticker: str,
+    date: str,
+) -> float:
+    """
+    Retrieve the closing price for a given ticker on a given date from local CSV data.
+    Args:
+        ticker (str): Ticker symbol of the company, e.g. AAPL
+        date (str): Date in yyyy-mm-dd format
+    Returns:
+        float: Closing price for ticker on the given date
+    Raises:
+        Exception: If price or file not found
+    """
+
+    # Path to price data CSV
+    price_path = os.path.join(
+        os.path.dirname(__file__),
+        "../../data/market_data/price_data",
+        f"{ticker.upper()}-YFin-data-2015-01-01-2025-07-27.csv",
+    )
+    if not os.path.exists(price_path):
+        raise Exception(f"Price data file not found for {ticker}")
+
+    df = pd.read_csv(price_path)
+    # Normalize date format
+    date_str = date.strip()
+    # Find row with matching date (ignore time part)
+    row = df[df["Date"].str.startswith(date_str)]
+    if row.empty:
+        raise Exception(f"No price found for {ticker} on {date}")
+    price = float(row.iloc[0]["Close"])
+    return price
 
 def get_finnhub_news(
     ticker: Annotated[
@@ -22,7 +55,7 @@ def get_finnhub_news(
         "Search query of a company's, e.g. 'AAPL, TSM, etc.",
     ],
     curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
-    look_back_days: Annotated[int, "how many days to look back"],
+    look_back_days: Annotated[int, "how many days to look back"] = 7,
 ):
     """
     Retrieve news about a company within a time frame
@@ -46,14 +79,26 @@ def get_finnhub_news(
         return ""
 
     combined_result = ""
+    seen_dicts = []
+
+    config = get_config()
+    if config["abmrOffline"]:
+        for entry in result:
+            if entry not in seen_dicts:
+                combined_result += f"### {entry['headline']} ({entry['date']}):\n{entry['summary']}\n\n"
+                seen_dicts.append(entry)
+        return f"## {ticker} News, from {before} to {curr_date}:\n" + str(combined_result)
+
     for day, data in result.items():
         if len(data) == 0:
             continue
         for entry in data:
-            current_news = (
-                "### " + entry["headline"] + f" ({day})" + "\n" + entry["summary"]
-            )
-            combined_result += current_news + "\n\n"
+            if entry not in seen_dicts:
+                current_news = (
+                    "### " + entry["headline"] + f" ({day})" + "\n" + entry["summary"]
+                )
+                combined_result += current_news + "\n\n"
+                seen_dicts.append(entry)
 
     return f"## {ticker} News, from {before} to {curr_date}:\n" + str(combined_result)
 
@@ -64,7 +109,7 @@ def get_finnhub_company_insider_sentiment(
         str,
         "current date of you are trading at, yyyy-mm-dd",
     ],
-    look_back_days: Annotated[int, "number of days to look back"],
+    look_back_days: Annotated[int, "number of days to look back"] = 7,
 ):
     """
     Retrieve insider sentiment about a company (retrieved from public SEC information) for the past 15 days
@@ -86,6 +131,18 @@ def get_finnhub_company_insider_sentiment(
 
     result_str = ""
     seen_dicts = []
+    config = get_config()
+    if config["abmrOffline"]:
+        print(data)
+        for entry in data["data"]:
+            if entry not in seen_dicts:
+                result_str += f"### {entry['year']}-{entry['month']}:\nChange: {entry['change']}\nMonthly Share Purchase Ratio: {entry['mspr']}\n\n"
+                seen_dicts.append(entry)
+        return (
+            f"## {ticker} Insider Sentiment Data for {before} to {curr_date}:\n"
+            + result_str
+            + "The change field refers to the net buying/selling from all insiders' transactions. The mspr field refers to monthly share purchase ratio."
+        )
     for date, senti_list in data.items():
         for entry in senti_list:
             if entry not in seen_dicts:
@@ -128,6 +185,22 @@ def get_finnhub_company_insider_transactions(
     result_str = ""
 
     seen_dicts = []
+
+    config = get_config()
+
+    if config["abmrOffline"]:
+        if len(data["data"]) == 0:
+            return "No insider transactions within the past 7 days."
+        for entry in data["data"]:
+            if entry not in seen_dicts:
+                result_str += f"### Filing Date: {entry['filingDate']}, {entry['name']}:\nChange:{entry['change']}\nShares: {entry['share']}\nTransaction Price: {entry['transactionPrice']}\nTransaction Code: {entry['transactionCode']}\n\n"
+                seen_dicts.append(entry)
+        return (
+            f"## {ticker} insider transactions from {before} to {curr_date}:\n"
+            + result_str
+            + "The change field reflects the variation in share count—here a negative number indicates a reduction in holdings—while share specifies the total number of shares involved. The transactionPrice denotes the per-share price at which the trade was executed, and transactionDate marks when the transaction occurred. The name field identifies the insider making the trade, and transactionCode (e.g., S for sale) clarifies the nature of the transaction. FilingDate records when the transaction was officially reported, and the unique id links to the specific SEC filing, as indicated by the source. Additionally, the symbol ties the transaction to a particular company, isDerivative flags whether the trade involves derivative securities, and currency notes the currency context of the transaction."
+        )
+
     for date, senti_list in data.items():
         for entry in senti_list:
             if entry not in seen_dicts:
@@ -140,53 +213,203 @@ def get_finnhub_company_insider_transactions(
         + "The change field reflects the variation in share count—here a negative number indicates a reduction in holdings—while share specifies the total number of shares involved. The transactionPrice denotes the per-share price at which the trade was executed, and transactionDate marks when the transaction occurred. The name field identifies the insider making the trade, and transactionCode (e.g., S for sale) clarifies the nature of the transaction. FilingDate records when the transaction was officially reported, and the unique id links to the specific SEC filing, as indicated by the source. Additionally, the symbol ties the transaction to a particular company, isDerivative flags whether the trade involves derivative securities, and currency notes the currency context of the transaction."
     )
 
+def _previous_calendar_quarter_end(curr_date_dt: pd.Timestamp) -> pd.Timestamp:
+    """
+    Get the most recent completed calendar quarter end strictly before curr_date_dt
+    (e.g. if curr_date is 2025-05-15 -> 2025-03-31; if 2025-03-31 -> 2024-12-31).
+    """
+    year = curr_date_dt.year
+    # Define the calendar quarter ends for the current year
+    q_ends = [
+        pd.Timestamp(year=year, month=3, day=31, tz='UTC'),
+        pd.Timestamp(year=year, month=6, day=30, tz='UTC'),
+        pd.Timestamp(year=year, month=9, day=30, tz='UTC'),
+        pd.Timestamp(year=year, month=12, day=31, tz='UTC'),
+    ]
+    # Find the last quarter end strictly before curr_date_dt
+    prev = None
+    for qe in q_ends:
+        if qe < curr_date_dt:
+            prev = qe
+        else:
+            break
+    if prev is not None:
+        return prev
+    # If none in this year, return last year's Dec 31
+    return pd.Timestamp(year=year - 1, month=12, day=31, tz='UTC')
+
+
+def _last_fiscal_year_end(curr_date_dt: pd.Timestamp) -> pd.Timestamp:
+    """
+    Assume fiscal year ends on Dec 31 (no custom fiscal calendars provided).
+    Return the most recent Dec 31 strictly before curr_date_dt
+    (if curr_date is 2025-01-10 -> 2024-12-31; if 2024-12-31 -> 2023-12-31).
+    """
+    candidate = pd.Timestamp(year=curr_date_dt.year, month=12, day=31, tz='UTC')
+    if curr_date_dt <= candidate:
+        # Not yet passed Dec 31 of this year (or exactly on it),
+        # so take last year's Dec 31
+        return pd.Timestamp(year=curr_date_dt.year - 1, month=12, day=31, tz='UTC')
+    return candidate
+
 
 def get_simfin_balance_sheet(
     ticker: Annotated[str, "ticker symbol"],
-    freq: Annotated[
-        str,
-        "reporting frequency of the company's financial history: annual / quarterly",
-    ],
+    freq: Annotated[str, "reporting frequency of the company's financial history: annual / quarterly"],
     curr_date: Annotated[str, "current date you are trading at, yyyy-mm-dd"],
 ):
-    data_path = os.path.join(
-        DATA_DIR,
-        "fundamental_data",
-        "simfin_data_all",
-        "balance_sheet",
-        "companies",
-        "us",
-        f"us-balance-{freq}.csv",
-    )
-    df = pd.read_csv(data_path, sep=";")
+    """
+    Retrieve a balance sheet snapshot using ONLY the JSON file for the most recent finished quarter
+    (no full directory scans / no loading of all files).
 
-    # Convert date strings to datetime objects and remove any time components
-    df["Report Date"] = pd.to_datetime(df["Report Date"], utc=True).dt.normalize()
-    df["Publish Date"] = pd.to_datetime(df["Publish Date"], utc=True).dt.normalize()
+    JSON file naming assumptions (located in DATA_DIR/simfin_data):
+      Quarterly files follow one of these patterns (we try both, in this order):
+        1. Fiscal-shift style (example provided): {TICKER}_BS_{FISCALYEAR}_Q{FQ}.json
+           Mapping from calendar quarter end (QE) month to (FISCALYEAR, FQ):
+             Dec (12) -> (year+1, Q1)
+             Mar (3)  -> (year,   Q2)
+             Jun (6)  -> (year,   Q3)
+             Sep (9)  -> (year,   Q4)
+        2. Pure calendar style: {TICKER}_BS_{YEAR}_Q{CQ}.json
+             Mar (3)->Q1, Jun (6)->Q2, Sep (9)->Q3, Dec (12)->Q4
 
-    # Convert the current date to datetime and normalize
-    curr_date_dt = pd.to_datetime(curr_date, utc=True).normalize()
+    Annual (freq starts with 'annual'):
+      - Determine last fiscal year end (Dec 31 strictly before curr_date).
+      - Use that Dec quarter's file (same quarter-resolution JSON) rather than a separate FY file.
+      - Prefer a Q4 (calendar style) or mapped Q1 (fiscal-shift style) corresponding to Dec 31.
 
-    # Filter the DataFrame for the given ticker and for reports that were published on or before the current date
-    filtered_df = df[(df["Ticker"] == ticker) & (df["Publish Date"] <= curr_date_dt)]
+    We DO NOT iterate all files. We compute candidate filenames for the target period and attempt them.
+    If the target period file is missing / not yet published (Publish Date > curr_date) / Report Date >= curr_date,
+    we step back one quarter at a time (up to max_lookback_quarters) repeating the filename inference.
 
-    # Check if there are any available reports; if not, return a notification
-    if filtered_df.empty:
-        print("No balance sheet available before the given current date.")
+    Returns formatted string or "" if none found.
+    """
+    base_dir = os.path.join(DATA_DIR, "simfin_data")
+    if not os.path.isdir(base_dir):
+        print(f"SimFin JSON directory not found: {base_dir}")
         return ""
 
-    # Get the most recent balance sheet by selecting the row with the latest Publish Date
-    latest_balance_sheet = filtered_df.loc[filtered_df["Publish Date"].idxmax()]
+    curr_dt = pd.to_datetime(curr_date, utc=True).normalize()
+    ticker_u = ticker.upper()
 
-    # drop the SimFinID column
-    latest_balance_sheet = latest_balance_sheet.drop("SimFinId")
+    def quarter_filename_candidates(q_end: pd.Timestamp):
+        """
+        Produce ordered filename candidates (fiscal-shift first, then calendar).
+        """
+        month = q_end.month
+        year = q_end.year
+
+        # Calendar mapping
+        cal_q_map = {3: 1, 6: 2, 9: 3, 12: 4}
+        cal_q = cal_q_map[month]
+        cal_year = year
+
+        # Fiscal-shift mapping (based on example: Q1 FY2019 has Report Date 2018-12-31)
+        if month == 12:
+            fiscal_year = year + 1
+            fiscal_q = 1
+        elif month == 3:
+            fiscal_year = year
+            fiscal_q = 2
+        elif month == 6:
+            fiscal_year = year
+            fiscal_q = 3
+        elif month == 9:
+            fiscal_year = year
+            fiscal_q = 4
+        else:
+            raise ValueError("Invalid quarter end month")
+
+        fiscal_style = f"{ticker_u}_BS_{fiscal_year}_Q{fiscal_q}.json"
+        calendar_style = f"{ticker_u}_BS_{cal_year}_Q{cal_q}.json"
+
+        # Avoid duplicate if they coincidentally match
+        if fiscal_style == calendar_style:
+            return [fiscal_style]
+        return [fiscal_style, calendar_style]
+
+    def load_record_from_file(fname: str):
+        path = os.path.join(base_dir, fname)
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            if isinstance(data, list) and data:
+                return data[0]  # assume single record per file (as per example)
+        except Exception as e:
+            print(f"Error reading {path}: {e}")
+        return None
+
+    # Determine target quarter end(s)
+    if freq.lower().startswith("quarter"):
+        target_q_end = _previous_calendar_quarter_end(curr_dt)
+    else:  # annual -> use last fiscal year end (Dec 31) and treat that quarter as annual snapshot
+        target_q_end = _last_fiscal_year_end(curr_dt)
+
+    max_lookback_quarters = 8  # safety cap
+    attempts = 0
+    chosen_record = None
+    chosen_report_date = None
+
+    q_end = target_q_end
+    while attempts < max_lookback_quarters and chosen_record is None:
+        for fname in quarter_filename_candidates(q_end):
+            rec = load_record_from_file(fname)
+            if rec is None:
+                continue
+
+            # Parse dates
+            try:
+                rep_dt = pd.to_datetime(rec.get("Report Date"), utc=True).normalize()
+                pub_dt = pd.to_datetime(rec.get("Publish Date"), utc=True).normalize()
+            except Exception:
+                continue
+
+            # Must represent a finished & published period
+            if pd.isna(rep_dt) or pd.isna(pub_dt):
+                continue
+            if rep_dt >= curr_dt or pub_dt > curr_dt:
+                # Not yet finished / published relative to trading date
+                continue
+
+            # For annual freq, ensure this is the intended fiscal-year snapshot:
+            if freq.lower().startswith("annual"):
+                # Prefer FY/Q4 markers if present; if not, still accept (fallback).
+                fiscal_period = str(rec.get("Fiscal Period", "")).upper()
+                if fiscal_period in ("FY", "Q4") or attempts > 0:
+                    chosen_record = rec
+                    chosen_report_date = rep_dt
+                    break
+            else:
+                # Quarterly path
+                chosen_record = rec
+                chosen_report_date = rep_dt
+                break
+
+        if chosen_record is None:
+            # Step back one quarter: subtract 1 day from current quarter end and recompute
+            prev_ref = q_end - pd.Timedelta(days=1)
+            q_end = _previous_calendar_quarter_end(prev_ref)
+            attempts += 1
+
+    if chosen_record is None:
+        print("No suitable balance sheet found within lookback limit.")
+        return ""
+
+    # Format output (keep prior style)
+    publish_date_str = str(chosen_record.get("Publish Date"))[:10]
+    report_date_str = str(chosen_record.get("Report Date"))[:10]
+
+    # Build a pandas Series for pretty printing but exclude helper keys if any
+    series = pd.Series({k: v for k, v in chosen_record.items() if not k.startswith("_")})
 
     return (
-        f"## {freq} balance sheet for {ticker} released on {str(latest_balance_sheet['Publish Date'])[0:10]}: \n"
-        + str(latest_balance_sheet)
-        + "\n\nThis includes metadata like reporting dates and currency, share details, and a breakdown of assets, liabilities, and equity. Assets are grouped as current (liquid items like cash and receivables) and noncurrent (long-term investments and property). Liabilities are split between short-term obligations and long-term debts, while equity reflects shareholder funds such as paid-in capital and retained earnings. Together, these components ensure that total assets equal the sum of liabilities and equity."
+        f"## {freq} balance sheet for {ticker} (Report Date {report_date_str}, "
+        f"Publish Date {publish_date_str}):\n"
+        + series.to_string()
+        + "\n\nThis snapshot reflects the latest fully completed fiscal period available before the trading date."
     )
-
 
 def get_simfin_cashflow(
     ticker: Annotated[str, "ticker symbol"],
@@ -196,44 +419,129 @@ def get_simfin_cashflow(
     ],
     curr_date: Annotated[str, "current date you are trading at, yyyy-mm-dd"],
 ):
-    data_path = os.path.join(
-        DATA_DIR,
-        "fundamental_data",
-        "simfin_data_all",
-        "cash_flow",
-        "companies",
-        "us",
-        f"us-cashflow-{freq}.csv",
-    )
-    df = pd.read_csv(data_path, sep=";")
+    """
+    Retrieve a cash flow statement snapshot using ONLY the JSON file for the most recent finished quarter
+    (no directory-wide loading).
 
-    # Convert date strings to datetime objects and remove any time components
-    df["Report Date"] = pd.to_datetime(df["Report Date"], utc=True).dt.normalize()
-    df["Publish Date"] = pd.to_datetime(df["Publish Date"], utc=True).dt.normalize()
+    JSON file naming assumptions (DATA_DIR/simfin_data):
+      Primary patterns attempted (in order) for a quarter ending (QE):
+        1. Fiscal-shift style: {TICKER}_CF_{FISCALYEAR}_Q{FQ}.json
+           Mapping from calendar quarter end month -> (FiscalYear, FiscalQuarter):
+             Dec -> (year+1, Q1)
+             Mar -> (year,   Q2)
+             Jun -> (year,   Q3)
+             Sep -> (year,   Q4)
+        2. Pure calendar style: {TICKER}_CF_{YEAR}_Q{CQ}.json
+             Mar->Q1, Jun->Q2, Sep->Q3, Dec->Q4
 
-    # Convert the current date to datetime and normalize
-    curr_date_dt = pd.to_datetime(curr_date, utc=True).normalize()
+    Annual (freq starts with 'annual'):
+      - Determine last fiscal year end (Dec 31 strictly before curr_date).
+      - Use that quarter's JSON (no separate FY file).
+      - Prefer a record whose Fiscal Period is FY or Q4; otherwise fallback.
 
-    # Filter the DataFrame for the given ticker and for reports that were published on or before the current date
-    filtered_df = df[(df["Ticker"] == ticker) & (df["Publish Date"] <= curr_date_dt)]
+    If target file not available or not yet published (Publish Date > curr_date) or Report Date >= curr_date,
+    step back one quarter (up to max_lookback_quarters).
 
-    # Check if there are any available reports; if not, return a notification
-    if filtered_df.empty:
-        print("No cash flow statement available before the given current date.")
+    Returns formatted string or "" if none found.
+    """
+    base_dir = os.path.join(DATA_DIR, "simfin_data")
+    if not os.path.isdir(base_dir):
+        print(f"SimFin JSON directory not found: {base_dir}")
         return ""
 
-    # Get the most recent cash flow statement by selecting the row with the latest Publish Date
-    latest_cash_flow = filtered_df.loc[filtered_df["Publish Date"].idxmax()]
+    curr_dt = pd.to_datetime(curr_date, utc=True).normalize()
+    ticker_u = ticker.upper()
 
-    # drop the SimFinID column
-    latest_cash_flow = latest_cash_flow.drop("SimFinId")
+    def quarter_filename_candidates(q_end: pd.Timestamp):
+        month = q_end.month
+        year = q_end.year
+        cal_q_map = {3: 1, 6: 2, 9: 3, 12: 4}
+        cal_q = cal_q_map[month]
+        cal_year = year
+        # Fiscal-shift mapping
+        if month == 12:
+            fiscal_year = year + 1
+            fiscal_q = 1
+        elif month == 3:
+            fiscal_year = year
+            fiscal_q = 2
+        elif month == 6:
+            fiscal_year = year
+            fiscal_q = 3
+        elif month == 9:
+            fiscal_year = year
+            fiscal_q = 4
+        else:
+            raise ValueError("Invalid quarter end month")
+        fiscal_style = f"{ticker_u}_CF_{fiscal_year}_Q{fiscal_q}.json"
+        calendar_style = f"{ticker_u}_CF_{cal_year}_Q{cal_q}.json"
+        return [fiscal_style] if fiscal_style == calendar_style else [fiscal_style, calendar_style]
+
+    def load_record_from_file(fname: str):
+        path = os.path.join(base_dir, fname)
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            if isinstance(data, list) and data:
+                return data[0]
+        except Exception as e:
+            print(f"Error reading {path}: {e}")
+        return None
+
+    # Determine initial target quarter end
+    if freq.lower().startswith("quarter"):
+        target_q_end = _previous_calendar_quarter_end(curr_dt)
+    else:
+        target_q_end = _last_fiscal_year_end(curr_dt)
+
+    max_lookback_quarters = 8
+    attempts = 0
+    chosen_record = None
+
+    q_end = target_q_end
+    while attempts < max_lookback_quarters and chosen_record is None:
+        for fname in quarter_filename_candidates(q_end):
+            rec = load_record_from_file(fname)
+            if rec is None:
+                continue
+            try:
+                rep_dt = pd.to_datetime(rec.get("Report Date"), utc=True).normalize()
+                pub_dt = pd.to_datetime(rec.get("Publish Date"), utc=True).normalize()
+            except Exception:
+                continue
+            if pd.isna(rep_dt) or pd.isna(pub_dt):
+                continue
+            if rep_dt >= curr_dt or pub_dt > curr_dt:
+                continue
+            if freq.lower().startswith("annual"):
+                fiscal_period = str(rec.get("Fiscal Period", "")).upper()
+                if fiscal_period in ("FY", "Q4") or attempts > 0:
+                    chosen_record = rec
+                    break
+            else:
+                chosen_record = rec
+                break
+        if chosen_record is None:
+            prev_ref = q_end - pd.Timedelta(days=1)
+            q_end = _previous_calendar_quarter_end(prev_ref)
+            attempts += 1
+
+    if chosen_record is None:
+        print("No suitable cash flow statement found within lookback limit.")
+        return ""
+
+    publish_date_str = str(chosen_record.get("Publish Date"))[:10]
+    report_date_str = str(chosen_record.get("Report Date"))[:10]
+    series = pd.Series({k: v for k, v in chosen_record.items() if not k.startswith("_")})
 
     return (
-        f"## {freq} cash flow statement for {ticker} released on {str(latest_cash_flow['Publish Date'])[0:10]}: \n"
-        + str(latest_cash_flow)
-        + "\n\nThis includes metadata like reporting dates and currency, share details, and a breakdown of cash movements. Operating activities show cash generated from core business operations, including net income adjustments for non-cash items and working capital changes. Investing activities cover asset acquisitions/disposals and investments. Financing activities include debt transactions, equity issuances/repurchases, and dividend payments. The net change in cash represents the overall increase or decrease in the company's cash position during the reporting period."
+        f"## {freq} cash flow statement for {ticker} (Report Date {report_date_str}, "
+        f"Publish Date {publish_date_str}):\n"
+        + series.to_string()
+        + "\n\nThis includes operating, investing, and financing cash flows for the latest fully completed period before the trading date."
     )
-
 
 def get_simfin_income_statements(
     ticker: Annotated[str, "ticker symbol"],
@@ -243,42 +551,138 @@ def get_simfin_income_statements(
     ],
     curr_date: Annotated[str, "current date you are trading at, yyyy-mm-dd"],
 ):
-    data_path = os.path.join(
-        DATA_DIR,
-        "fundamental_data",
-        "simfin_data_all",
-        "income_statements",
-        "companies",
-        "us",
-        f"us-income-{freq}.csv",
-    )
-    df = pd.read_csv(data_path, sep=";")
+    """
+    Retrieve an income statement snapshot using ONLY the JSON file for the most recent finished quarter
+    (no directory-wide scans).
 
-    # Convert date strings to datetime objects and remove any time components
-    df["Report Date"] = pd.to_datetime(df["Report Date"], utc=True).dt.normalize()
-    df["Publish Date"] = pd.to_datetime(df["Publish Date"], utc=True).dt.normalize()
+    JSON file naming assumptions (located in DATA_DIR/simfin_data):
+      Quarterly files (we try both naming styles, in order):
+        1. Fiscal-shift style: {TICKER}_IS_{FISCALYEAR}_Q{FQ}.json
+           Mapping calendar quarter end month -> (FiscalYear, FiscalQuarter):
+             Dec -> (year+1, Q1)
+             Mar -> (year,   Q2)
+             Jun -> (year,   Q3)
+             Sep -> (year,   Q4)
+        2. Pure calendar style: {TICKER}_IS_{YEAR}_Q{CQ}.json
+             Mar->Q1, Jun->Q2, Sep->Q3, Dec->Q4
 
-    # Convert the current date to datetime and normalize
-    curr_date_dt = pd.to_datetime(curr_date, utc=True).normalize()
+    Annual (freq starts with 'annual'):
+      - Determine last fiscal year end (Dec 31 strictly before curr_date).
+      - Use that quarter's JSON (no separate FY file).
+      - Prefer a record with Fiscal Period FY or Q4; otherwise step back further.
 
-    # Filter the DataFrame for the given ticker and for reports that were published on or before the current date
-    filtered_df = df[(df["Ticker"] == ticker) & (df["Publish Date"] <= curr_date_dt)]
+    If the target period file is missing / not yet published (Publish Date > curr_date) /
+    Report Date >= curr_date, step back one quarter (up to max_lookback_quarters).
 
-    # Check if there are any available reports; if not, return a notification
-    if filtered_df.empty:
-        print("No income statement available before the given current date.")
+    Returns formatted string or "" if none found.
+    """
+    base_dir = os.path.join(DATA_DIR, "simfin_data")
+    if not os.path.isdir(base_dir):
+        print(f"SimFin JSON directory not found: {base_dir}")
         return ""
 
-    # Get the most recent income statement by selecting the row with the latest Publish Date
-    latest_income = filtered_df.loc[filtered_df["Publish Date"].idxmax()]
+    curr_dt = pd.to_datetime(curr_date, utc=True).normalize()
+    ticker_u = ticker.upper()
 
-    # drop the SimFinID column
-    latest_income = latest_income.drop("SimFinId")
+    def quarter_filename_candidates(q_end: pd.Timestamp):
+        """Produce ordered filename candidates (fiscal-shift first, then calendar)."""
+        month = q_end.month
+        year = q_end.year
+        cal_q_map = {3: 1, 6: 2, 9: 3, 12: 4}
+        cal_q = cal_q_map[month]
+        cal_year = year
+        # Fiscal-shift mapping
+        if month == 12:
+            fiscal_year = year + 1
+            fiscal_q = 1
+        elif month == 3:
+            fiscal_year = year
+            fiscal_q = 2
+        elif month == 6:
+            fiscal_year = year
+            fiscal_q = 3
+        elif month == 9:
+            fiscal_year = year
+            fiscal_q = 4
+        else:
+            raise ValueError("Invalid quarter end month")
+
+        fiscal_style = f"{ticker_u}_PL_{fiscal_year}_Q{fiscal_q}.json"
+        calendar_style = f"{ticker_u}_PL_{cal_year}_Q{cal_q}.json"
+        if fiscal_style == calendar_style:
+            return [fiscal_style]
+        return [fiscal_style, calendar_style]
+
+    def load_record_from_file(fname: str):
+        path = os.path.join(base_dir, fname)
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            if isinstance(data, list) and data:
+                return data[0]  # assume single record per file
+        except Exception as e:
+            print(f"Error reading {path}: {e}")
+        return None
+
+    # Determine initial target quarter end
+    if freq.lower().startswith("quarter"):
+        target_q_end = _previous_calendar_quarter_end(curr_dt)
+    else:
+        target_q_end = _last_fiscal_year_end(curr_dt)
+
+    max_lookback_quarters = 8
+    attempts = 0
+    chosen_record = None
+
+    q_end = target_q_end
+    while attempts < max_lookback_quarters and chosen_record is None:
+        for fname in quarter_filename_candidates(q_end):
+            rec = load_record_from_file(fname)
+            if rec is None:
+                continue
+
+            # Parse dates
+            try:
+                rep_dt = pd.to_datetime(rec.get("Report Date"), utc=True).normalize()
+                pub_dt = pd.to_datetime(rec.get("Publish Date"), utc=True).normalize()
+            except Exception:
+                continue
+
+            # Validate finished & published before curr_date
+            if pd.isna(rep_dt) or pd.isna(pub_dt):
+                continue
+            if rep_dt >= curr_dt or pub_dt > curr_dt:
+                continue
+
+            if freq.lower().startswith("annual"):
+                fiscal_period = str(rec.get("Fiscal Period", "")).upper()
+                if fiscal_period in ("FY", "Q4") or attempts > 0:
+                    chosen_record = rec
+                    break
+            else:
+                chosen_record = rec
+                break
+
+        if chosen_record is None:
+            prev_ref = q_end - pd.Timedelta(days=1)
+            q_end = _previous_calendar_quarter_end(prev_ref)
+            attempts += 1
+
+    if chosen_record is None:
+        print("No suitable income statement found within lookback limit.")
+        return ""
+
+    publish_date_str = str(chosen_record.get("Publish Date"))[:10]
+    report_date_str = str(chosen_record.get("Report Date"))[:10]
+    series = pd.Series({k: v for k, v in chosen_record.items() if not k.startswith("_")})
 
     return (
-        f"## {freq} income statement for {ticker} released on {str(latest_income['Publish Date'])[0:10]}: \n"
-        + str(latest_income)
-        + "\n\nThis includes metadata like reporting dates and currency, share details, and a comprehensive breakdown of the company's financial performance. Starting with Revenue, it shows Cost of Revenue and resulting Gross Profit. Operating Expenses are detailed, including SG&A, R&D, and Depreciation. The statement then shows Operating Income, followed by non-operating items and Interest Expense, leading to Pretax Income. After accounting for Income Tax and any Extraordinary items, it concludes with Net Income, representing the company's bottom-line profit or loss for the period."
+        f"## {freq} income statement for {ticker} (Report Date {report_date_str}, "
+        f"Publish Date {publish_date_str}):\n"
+        + series.to_string()
+        + "\n\nThis includes revenue, cost structure, operating results, non-operating items, taxes, and net income for the latest fully completed period before the trading date."
     )
 
 
@@ -314,51 +718,35 @@ def get_reddit_global_news(
     max_limit_per_day: Annotated[int, "Maximum number of news per day"],
 ) -> str:
     """
-    Retrieve the latest top reddit news
-    Args:
-        start_date: Start date in yyyy-mm-dd format
-        end_date: End date in yyyy-mm-dd format
-    Returns:
-        str: A formatted dataframe containing the latest news articles posts on reddit and meta information in these columns: "created_utc", "id", "title", "selftext", "score", "num_comments", "url"
+    Retrieve pre-fetched macro / global news from a Perplexity JSON dump.
+
+    Change: Instead of iterating Reddit posts, this now loads:
+        DATA_DIR/perplexity_macro_news/macro_news_{start_date}.json
+
+    Returns the 'cleanedOutput' field (already formatted text).
+    The look_back_days and max_limit_per_day parameters are retained for signature
+    compatibility but are not used in this JSON-based retrieval.
     """
+    file_name = f"macro_news_{start_date}.json"
+    file_path = os.path.join(DATA_DIR, "perplexity_macro_news", file_name)
 
-    start_date = datetime.strptime(start_date, "%Y-%m-%d")
-    before = start_date - relativedelta(days=look_back_days)
-    before = before.strftime("%Y-%m-%d")
-
-    posts = []
-    # iterate from start_date to end_date
-    curr_date = datetime.strptime(before, "%Y-%m-%d")
-
-    total_iterations = (start_date - curr_date).days + 1
-    pbar = tqdm(desc=f"Getting Global News on {start_date}", total=total_iterations)
-
-    while curr_date <= start_date:
-        curr_date_str = curr_date.strftime("%Y-%m-%d")
-        fetch_result = fetch_top_from_category(
-            "global_news",
-            curr_date_str,
-            max_limit_per_day,
-            data_path=os.path.join(DATA_DIR, "reddit_data"),
-        )
-        posts.extend(fetch_result)
-        curr_date += relativedelta(days=1)
-        pbar.update(1)
-
-    pbar.close()
-
-    if len(posts) == 0:
+    if not os.path.exists(file_path):
+        print(f"Macro news file not found: {file_path}")
         return ""
 
-    news_str = ""
-    for post in posts:
-        if post["content"] == "":
-            news_str += f"### {post['title']}\n\n"
-        else:
-            news_str += f"### {post['title']}\n\n{post['content']}\n\n"
+    try:
+        with open(file_path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception as e:
+        print(f"Error reading macro news file {file_path}: {e}")
+        return ""
 
-    return f"## Global News Reddit, from {before} to {curr_date}:\n{news_str}"
+    cleaned = data.get("cleanedOutput")
+    if not cleaned:
+        print(f"'cleanedOutput' field missing or empty in {file_path}")
+        return ""
 
+    return cleaned
 
 def get_reddit_company_news(
     ticker: Annotated[str, "ticker symbol of the company"],
@@ -367,56 +755,68 @@ def get_reddit_company_news(
     max_limit_per_day: Annotated[int, "Maximum number of news per day"],
 ) -> str:
     """
-    Retrieve the latest top reddit news
+    Retrieve recent Reddit posts for a ticker using pre-fetched aggregated JSON.
+
+    Behavior change:
+      - Instead of iterating day by day and calling fetch_top_from_category,
+        this uses get_top_reddit_posts_for_ticker which already loads the
+        single consolidated JSON file for the ticker and filters to the
+        last 7 days ending at start_date.
+      - The look_back_days parameter is retained for signature compatibility
+        and only used to label the output window header (not to drive filtering).
+
     Args:
-        ticker: ticker symbol of the company
-        start_date: Start date in yyyy-mm-dd format
-        end_date: End date in yyyy-mm-dd format
+        ticker: Ticker symbol.
+        start_date: End (anchor) date in yyyy-mm-dd.
+        look_back_days: Window label (actual filtering inside helper fixed at 7 days).
+        max_limit_per_day: Maximum number of posts to return (passed through).
+
     Returns:
-        str: A formatted dataframe containing the latest news articles posts on reddit and meta information in these columns: "created_utc", "id", "title", "selftext", "score", "num_comments", "url"
+        Markdown formatted string of top posts or empty string if none.
     """
+    ticker_u = ticker.upper()
+    try:
+        datetime.strptime(start_date, "%Y-%m-%d")
+    except ValueError:
+        return ""
 
-    start_date = datetime.strptime(start_date, "%Y-%m-%d")
-    before = start_date - relativedelta(days=look_back_days)
-    before = before.strftime("%Y-%m-%d")
+    end_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    before_dt = end_dt - relativedelta(days=look_back_days)
+    before_str = before_dt.strftime("%Y-%m-%d")
 
-    posts = []
-    # iterate from start_date to end_date
-    curr_date = datetime.strptime(before, "%Y-%m-%d")
-
-    total_iterations = (start_date - curr_date).days + 1
-    pbar = tqdm(
-        desc=f"Getting Company News for {ticker} on {start_date}",
-        total=total_iterations,
+    posts = get_top_reddit_posts_for_ticker(
+        ticker_u,
+        start_date,
+        max_limit_per_day,
+        data_dir=os.path.join(DATA_DIR, "reddit_data"),
     )
 
-    while curr_date <= start_date:
-        curr_date_str = curr_date.strftime("%Y-%m-%d")
-        fetch_result = fetch_top_from_category(
-            "company_news",
-            curr_date_str,
-            max_limit_per_day,
-            ticker,
-            data_path=os.path.join(DATA_DIR, "reddit_data"),
-        )
-        posts.extend(fetch_result)
-        curr_date += relativedelta(days=1)
-
-        pbar.update(1)
-
-    pbar.close()
-
-    if len(posts) == 0:
+    if not posts:
         return ""
 
     news_str = ""
     for post in posts:
-        if post["content"] == "":
-            news_str += f"### {post['title']}\n\n"
+        title = post.get("title", "").strip()
+        content = (post.get("content") or post.get("selftext") or "").strip()
+        url = post.get("url", "").strip()
+        score = post.get("score", post.get("upvotes", ""))
+        date_str = post.get("posted_date", "")
+        meta_line = []
+        if date_str:
+            meta_line.append(date_str)
+        if score != "":
+            meta_line.append(f"Score: {score}")
+        if url:
+            meta_line.append(url)
+        meta = " | ".join(meta_line)
+        if meta:
+            meta = f"\n{meta}"
+        if content:
+            news_str += f"### {title}{meta}\n\n{content}\n\n"
         else:
-            news_str += f"### {post['title']}\n\n{post['content']}\n\n"
+            news_str += f"### {title}{meta}\n\n"
 
-    return f"##{ticker} News Reddit, from {before} to {curr_date}:\n\n{news_str}"
+    return f"## {ticker_u} News Reddit, from {before_str} to {start_date}:\n\n{news_str}"
 
 
 def get_stock_stats_indicators_window(
@@ -502,10 +902,10 @@ def get_stock_stats_indicators_window(
         ),
     }
 
-    if indicator not in best_ind_params:
-        raise ValueError(
-            f"Indicator {indicator} is not supported. Please choose from: {list(best_ind_params.keys())}"
-        )
+    # if indicator not in best_ind_params:
+    #     raise ValueError(
+    #         f"Indicator {indicator} is not supported. Please choose from: {list(best_ind_params.keys())}"
+    #     )
 
     end_date = curr_date
     curr_date = datetime.strptime(curr_date, "%Y-%m-%d")
@@ -516,9 +916,10 @@ def get_stock_stats_indicators_window(
         data = pd.read_csv(
             os.path.join(
                 DATA_DIR,
-                f"market_data/price_data/{symbol}-YFin-data-2015-01-01-2025-03-25.csv",
-            )
+                f"market_data/price_data/{symbol}-YFin-data-2015-01-01-2025-07-27.csv",
+            )  # type: ignore
         )
+        print("Successfully fetched data")
         data["Date"] = pd.to_datetime(data["Date"], utc=True)
         dates_in_df = data["Date"].astype(str).str[:10]
 
@@ -598,7 +999,7 @@ def get_YFin_data_window(
     data = pd.read_csv(
         os.path.join(
             DATA_DIR,
-            f"market_data/price_data/{symbol}-YFin-data-2015-01-01-2025-03-25.csv",
+            f"market_data/price_data/{symbol}-YFin-data-2015-01-01-2025-07-27.csv",
         )
     )
 
@@ -666,42 +1067,51 @@ def get_YFin_data_online(
 
     return header + csv_string
 
-
+# Dones
 def get_YFin_data(
     symbol: Annotated[str, "ticker symbol of the company"],
     start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
     end_date: Annotated[str, "End date in yyyy-mm-dd format"],
 ) -> str:
-    # read in data
-    data = pd.read_csv(
-        os.path.join(
-            DATA_DIR,
-            f"market_data/price_data/{symbol}-YFin-data-2015-01-01-2025-03-25.csv",
-        )
-    )
+    # Resolve local price file (remove leading slash bug and allow fallback)
+    price_dir = os.path.join(DATA_DIR, "market_data", "price_data")
+    target_filename = f"{symbol}-YFin-data-2015-01-01-2025-07-27.csv"
+    price_path = os.path.join(price_dir, target_filename)
 
-    if end_date > "2025-03-25":
+    if not os.path.exists(price_path):
+        # Fallback: pick latest matching file
+        import glob
+        pattern = os.path.join(price_dir, f"{symbol}-YFin-data-*.csv")
+        candidates = sorted(glob.glob(pattern))
+        if not candidates:
+            raise FileNotFoundError(
+                f"No local YFin price data file found for {symbol}. Searched {price_path} and pattern {pattern}"
+            )
+        price_path = candidates[-1]
+
+    data = pd.read_csv(price_path)
+    # Basic range validation based on file’s min/max dates
+    if "Date" not in data.columns:
+        raise ValueError(f"'Date' column missing in {price_path}")
+
+    data["DateOnly"] = data["Date"].astype(str).str[:10]
+    min_file_date = data["DateOnly"].min()
+    max_file_date = data["DateOnly"].max()
+
+    if start_date < min_file_date:
         raise Exception(
-            f"Get_YFin_Data: {end_date} is outside of the data range of 2015-01-01 to 2025-03-25"
+            f"Get_YFin_Data: {start_date} is outside of the data range of {min_file_date} to {max_file_date}"
+        )
+    if end_date > max_file_date:
+        raise Exception(
+            f"Get_YFin_Data: {end_date} is outside of the data range of {min_file_date} to {max_file_date}"
         )
 
-    # Extract just the date part for comparison
-    data["DateOnly"] = data["Date"].str[:10]
-
-    # Filter data between the start and end dates (inclusive)
     filtered_data = data[
         (data["DateOnly"] >= start_date) & (data["DateOnly"] <= end_date)
-    ]
-
-    # Drop the temporary column we created
-    filtered_data = filtered_data.drop("DateOnly", axis=1)
-
-    # remove the index from the dataframe
-    filtered_data = filtered_data.reset_index(drop=True)
+    ].drop(columns=["DateOnly"]).reset_index(drop=True)
 
     return filtered_data
-
-
 def get_stock_news_openai(ticker, curr_date):
     config = get_config()
     client = OpenAI(base_url=config["backend_url"])

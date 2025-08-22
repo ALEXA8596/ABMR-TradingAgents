@@ -9,4 +9,7 @@ eval_data/
 .env
 results
 venv/
+node_modules
+archive
+data
 *.jsonl

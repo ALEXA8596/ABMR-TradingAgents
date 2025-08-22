@@ -200,6 +200,17 @@ class TradingAgentsGraph:
                     self.toolkit.get_simfin_income_stmt,
                 ]
             ),
+            # Trader-specific tools (execution and portfolio helpers)
+            "riskJudge": ToolNode(
+                [
+                    # Execution tools
+                    self.toolkit.buy,
+                    self.toolkit.hold,
+                    self.toolkit.sell,
+                    self.toolkit.get_portfolio,
+                    self.toolkit.get_price,
+                ]
+            ),
         }
 
     def propagate(self, ticker: str, date: str) -> Tuple[Dict[str, Any], str]:

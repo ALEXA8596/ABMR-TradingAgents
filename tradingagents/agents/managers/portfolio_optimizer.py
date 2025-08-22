@@ -3,6 +3,9 @@ import json
 import os
 from datetime import datetime
 from tradingagents.blackboard.utils import create_agent_blackboard
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import SystemMessage  # Added for static system message
+import yfinance as yf
 
 
 def create_portfolio_optimizer(llm, memory, toolkit):
@@ -43,15 +46,6 @@ def create_portfolio_optimizer(llm, memory, toolkit):
                  toolkit.perform_stress_test,
                  toolkit.calculate_beta,
                  toolkit.design_hedging_strategy,
-                 # Todo
-                 # toolkit.analyze_asset_correlations,
-                 # toolkit.calculate_var_cvar,
-                 # toolkit.design_options_strategy,
-                 # toolkit.optimize_crypto_hedging,
-                 # toolkit.generate_futures_hedge_ratios,
-                 # toolkit.analyze_forex_exposure,
-                 # toolkit.calculate_commodity_hedge,
-                 # toolkit.generate_rebalancing_schedule
                 ]
 
         quant_strategies = state.get("quant_strategies")
@@ -154,11 +148,78 @@ Create a detailed markdown report covering:
 
 Provide specific trade recommendations, position sizes, and quantitative analysis. Make this institutional-quality with hedge fund level sophistication."""
 
-        response = llm.invoke(prompt)
-        
-        # Create the markdown report
-        portfolio_analysis = response.content
-        
+        # Build a ChatPromptTemplate using a static SystemMessage to avoid template parsing of curly braces in dynamic content
+        chat_prompt = ChatPromptTemplate.from_messages(
+            [
+                SystemMessage(content=prompt),  # static, no templating
+                MessagesPlaceholder(variable_name="messages"),
+            ]
+        )
+
+        # Bind tools to the prompt/llm pipeline
+        chain = chat_prompt | llm.bind_tools(tools)
+
+        # Normalize incoming messages robustly
+        raw_messages = state.get("messages", []) or []
+        normalized_messages = []
+        for m in raw_messages:
+            if isinstance(m, dict):
+                role = (m.get("role") or m.get("type") or "user").lower()
+                content = m.get("content") or m.get("text") or ""
+            else:
+                role = (getattr(m, "role", None) or getattr(m, "type", None) or "user").lower()
+                content = getattr(m, "content", None)
+                if callable(content):
+                    try:
+                        content = content()
+                    except Exception:
+                        content = ""
+                content = content or getattr(m, "text", None) or ""
+            # Map generic roles to LangChain expected types
+            if role == "user":
+                role = "human"
+            elif role in ("assistant", "ai", "model"):
+                role = "ai"
+            elif role not in ("system", "human", "ai"):
+                role = "human"
+            # Ensure content is a string
+            if not isinstance(content, (str, list)):
+                content = str(content)
+            if isinstance(content, list):
+                # Flatten list parts to string if list of dicts/str
+                try:
+                    parts = []
+                    for p in content:
+                        if isinstance(p, str):
+                            parts.append(p)
+                        else:
+                            parts.append(json.dumps(p, ensure_ascii=False))
+                    content = "\n".join(parts)
+                except Exception:
+                    content = str(content)
+            normalized_messages.append({"role": role, "content": content})
+
+        # Invoke the chain with normalized messages only
+        result = chain.invoke({"messages": normalized_messages})
+
+        # Safely extract the analysis text from the result
+        if isinstance(result, dict):
+            portfolio_analysis = result.get("content") or result.get("text") or ""
+        else:
+            extracted = getattr(result, "content", None)
+            if callable(extracted):  # guard against bound method
+                try:
+                    extracted = extracted()
+                except Exception:
+                    extracted = None
+            portfolio_analysis = extracted or getattr(result, "text", None) or str(result) or ""
+        # Ensure portfolio_analysis is a string for downstream operations
+        if not isinstance(portfolio_analysis, str):
+            try:
+                portfolio_analysis = json.dumps(portfolio_analysis, ensure_ascii=False)
+            except Exception:
+                portfolio_analysis = str(portfolio_analysis)
+
         # Generate filename with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"portfolio_optimization_{company_name}_{timestamp}.md"
@@ -204,6 +265,136 @@ This report is generated by AI-powered quantitative analysis and should be revie
         except Exception as e:
             print(f"❌ Error saving report: {e}")
 
+        # Execute trades here based on Portfolio Optimizer target weights (enterprise policy)
+        execution_summary = {
+            "executed": False,
+            "action": None,
+            "quantity": 0,
+            "message": "",
+            "target_weight": None,
+        }
+
+        try:
+            trade_date = state.get("trade_date", datetime.now().strftime("%Y-%m-%d"))
+
+            # 1) Determine target weight for the company
+            target_weight = None
+            try:
+                # Prefer weights from quant options manager
+                if quant_strategies and isinstance(quant_strategies, dict):
+                    rp = quant_strategies.get("risk_parity") or {}
+                    rp_weights = rp.get("weights") or {}
+                    if company_name in rp_weights:
+                        target_weight = float(rp_weights[company_name])
+            except Exception:
+                target_weight = None
+
+            # If no quant-provided weights, compute risk parity weights now
+            if target_weight is None:
+                try:
+                    rp_now = toolkit.get_portfolio_risk_parity.invoke({})
+                    if isinstance(rp_now, dict):
+                        weights_now = rp_now.get("weights") or {}
+                        if company_name in weights_now:
+                            target_weight = float(weights_now[company_name])
+                except Exception:
+                    target_weight = None
+
+            # 2) Load current portfolio snapshot
+            portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json")
+            portfolio = {}
+            try:
+                if os.path.exists(portfolio_path):
+                    with open(portfolio_path, "r") as pf:
+                        portfolio = json.load(pf)
+            except Exception:
+                portfolio = {}
+
+            # 3) Fetch current prices for portfolio valuation
+            def get_price_safe(tkr: str) -> float:
+                try:
+                    st = yf.Ticker(tkr)
+                    return float(st.history(period="1d")["Close"].iloc[-1])
+                except Exception:
+                    return 0.0
+
+            liquid = float(portfolio.get("liquid", 0) or 0)
+            # Build holdings list (tickers present as top-level keys that have dicts)
+            tickers = [k for k, v in portfolio.items() if isinstance(v, dict)]
+            prices = {t: get_price_safe(t) for t in set(tickers + [company_name])}
+
+            # Current shares and values
+            existing = portfolio.get(company_name, {})
+            current_shares = int(existing.get("totalAmount", 0) or 0)
+            price = prices.get(company_name, 0.0)
+
+            portfolio_value_positions = sum(
+                (float(portfolio.get(t, {}).get("totalAmount", 0) or 0) * prices.get(t, 0.0))
+                for t in tickers
+            )
+            portfolio_value = liquid + portfolio_value_positions
+
+            # 4) Compute target shares and trade without artificial caps
+            action = None
+            quantity = 0
+
+            if target_weight is not None and price > 0:
+                target_value = max(0.0, target_weight * portfolio_value)
+                target_shares = int(target_value // price)
+                delta_shares = target_shares - current_shares
+                if delta_shares > 0:
+                    # Buy as many as needed up to cash constraint
+                    affordable = int(liquid // price)
+                    buy_qty = max(0, min(delta_shares, affordable))
+                    if buy_qty > 0:
+                        msg = toolkit.buy_impl(company_name, trade_date, buy_qty)
+                        action, quantity = "BUY", buy_qty
+                        execution_summary.update({"message": msg})
+                elif delta_shares < 0:
+                    sell_qty = min(current_shares, abs(delta_shares))
+                    if sell_qty > 0:
+                        msg = toolkit.sell_impl(company_name, trade_date, sell_qty)
+                        action, quantity = "SELL", sell_qty
+                        execution_summary.update({"message": msg})
+                else:
+                    # Already at target
+                    msg = toolkit.hold_impl(company_name, trade_date, note="At target weight")
+                    action, quantity = "HOLD", 0
+                    execution_summary.update({"message": msg})
+                execution_summary["target_weight"] = target_weight
+            else:
+                # Fallback: follow Risk Judge recommendation without caps
+                action_text = str(risk_decision or "").upper()
+                if "BUY" in action_text and price > 0 and liquid > 0:
+                    buy_qty = int(liquid // price)
+                    if buy_qty > 0:
+                        msg = toolkit.buy_impl(company_name, trade_date, buy_qty)
+                        action, quantity = "BUY", buy_qty
+                        execution_summary.update({"message": msg})
+                elif "SELL" in action_text and current_shares > 0:
+                    sell_qty = current_shares
+                    msg = toolkit.sell_impl(company_name, trade_date, sell_qty)
+                    action, quantity = "SELL", sell_qty
+                    execution_summary.update({"message": msg})
+                else:
+                    msg = toolkit.hold_impl(company_name, trade_date, note="No target weight; HOLD")
+                    action, quantity = "HOLD", 0
+                    execution_summary.update({"message": msg})
+
+            execution_summary.update({
+                "executed": True if action else False,
+                "action": action,
+                "quantity": quantity,
+            })
+        except Exception as e:
+            execution_summary = {
+                "executed": False,
+                "action": None,
+                "quantity": 0,
+                "message": f"Execution skipped due to error: {str(e)}",
+                "target_weight": execution_summary.get("target_weight"),
+            }
+
         # Store analysis in memory for future reference
         memory_entry = f"Portfolio Optimization for {company_name}: {portfolio_analysis[:500]}..."
         try:
@@ -220,8 +411,9 @@ This report is generated by AI-powered quantitative analysis and should be revie
                 "report_file": full_path,
                 "timestamp": timestamp,
                 "multi_asset_hedging": True,
-                "asset_classes_covered": ["crypto", "options", "futures", "forex", "commodities"]
+                "asset_classes_covered": ["crypto", "options", "futures", "forex", "commodities"],
+                "execution": execution_summary,
             }
         }
 
-    return portfolio_optimizer_node 
+    return portfolio_optimizer_node
