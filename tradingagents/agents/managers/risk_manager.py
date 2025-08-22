@@ -18,25 +18,7 @@ def create_risk_manager(llm, memory, toolkit):
         sentiment_report = state["sentiment_report"]
         trader_plan = state["investment_plan"]
 
-        # Choose tools depending on online config
-        if getattr(toolkit, "config", {}).get("online_tools"):
-            tools = [
-                toolkit.buy,
-                toolkit.sell,
-                toolkit.hold,
-                toolkit.get_price,
-                toolkit.get_portfolio,
-            ]
-        else:
-            tools = [
-                toolkit.buy,
-                toolkit.sell,
-                toolkit.hold,
-                toolkit.get_price,
-                toolkit.get_portfolio,
-            ]
-
-        tool_names = ", ".join([tool.name for tool in tools])
+        # Enterprise policy: Risk Judge recommends only; execution happens in Portfolio Optimizer.
 
         # Blackboard integration
         blackboard_agent = create_agent_blackboard("RKM_001", "RiskManager")
@@ -74,24 +56,23 @@ Guidelines for Decision-Making:
 3. **Refine the Trader's Plan**: Start with the trader's original plan, **{trader_plan}**, and adjust it based on the analysts' insights.
 4. **Learn from Past Mistakes**: Use lessons from **{past_memory_str}** to address prior misjudgments and improve the decision you are making now to make sure you don't make a wrong BUY/SELL/HOLD call that loses money.
 
-Once you've make your decision, make sure to use the BUY / SELL / HOLD tools to execute the decision. Make sure to fetch the portfolio to gain insights on the portfolio, and choose the number of shares to maximize gains / minimize losses. If you are not sure whether to buy or sell, use the HOLD tool."""
+Do not execute any trades or call tools. Produce a clear BUY/SELL/HOLD recommendation with rationale; execution will be handled later by the Portfolio Optimizer."""
 
         prompt = ChatPromptTemplate.from_messages(
             [
                 (
                     "system",
-                    "You are a helpful AI assistant collaborating with other assistants. Use the provided tools to progress towards answering the question. If you are unable to fully answer, that's OK; another assistant with different tools will help where you left off. Execute what you can to make progress. You have access to the following tools: {tool_names}.\n\n{system_message}\nFor your reference, the current date is {current_date}. The company we want to analyze is {ticker}.",
+                    "You are a helpful AI assistant collaborating with other assistants. Provide a decisive recommendation and concise rationale. Do not call or reference any tools.\n\n{system_message}\nFor your reference, the current date is {current_date}. The company we want to analyze is {ticker}.",
                 ),
                 MessagesPlaceholder(variable_name="messages"),
             ]
         )
 
         prompt = prompt.partial(system_message=system_message)
-        prompt = prompt.partial(tool_names=tool_names)
         prompt = prompt.partial(current_date=current_date)
         prompt = prompt.partial(ticker=ticker)
 
-        chain = prompt | llm.bind_tools(tools)
+        chain = prompt | llm
         
         print("messages")
         print(state.get("messages", []))
@@ -101,12 +82,7 @@ Once you've make your decision, make sure to use the BUY / SELL / HOLD tools to 
         response = result
         response_text = getattr(response, 'content', '') or ''
 
-        # If the LLM produced tool calls, preserve them so conditional logic can route to tools node
-        if getattr(response, "tool_calls", None):
-            return {
-                "messages": state.get("messages", []) + [response],
-                "risk_debate_state": risk_debate_state,
-            }
+        # No tool calls expected; proceed with parsing
 
         # default decision parsing (only after no pending tool calls)
         decision = "Hold"
