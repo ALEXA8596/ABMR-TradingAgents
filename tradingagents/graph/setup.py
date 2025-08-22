@@ -43,7 +43,7 @@ class GraphSetup:
         self.portfolio_optimizer_memory = portfolio_optimizer_memory
 
     def setup_graph(
-        self, selected_analysts=["market", "social", "news", "fundamentals"]
+        self, selected_analysts=["market", "social", "news", "fundamentals", "macroeconomic"]
     ):
         """Set up and compile the agent workflow graph.
 
@@ -68,13 +68,6 @@ class GraphSetup:
             )
             delete_nodes["market"] = create_msg_delete()
             tool_nodes["market"] = self.tool_nodes["market"]
-
-        if "quant_market" in selected_analysts:
-            analyst_nodes["quant_market"] = create_quant_market_analyst(
-                self.quick_thinking_llm, self.toolkit
-            )
-            delete_nodes["quant_market"] = create_msg_delete()
-            tool_nodes["quant_market"] = self.tool_nodes["market"]  # Use same tools as market analyst
 
         if "macroeconomic" in selected_analysts:
             analyst_nodes["macroeconomic"] = create_macroeconomic_analyst(
@@ -157,6 +150,7 @@ class GraphSetup:
         quant_options_manager_node = create_quant_options_manager(
             self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
         )
+        
         portfolio_optimizer_node = create_portfolio_optimizer(
             self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
         )
@@ -181,8 +175,6 @@ class GraphSetup:
         workflow.add_node("Bear Researcher Ans", bear_researcher_ans_node)
         workflow.add_node("Research Manager", research_manager_node)
         workflow.add_node("Trader", trader_node)
-        # Add message clear node for Trader (used in conditional edges)
-        workflow.add_node("Msg Clear Trader", create_msg_delete())
         workflow.add_node("Risky Analyst", risky_analyst)
         workflow.add_node("Risky Analyst Ask", risky_analyst_ask)
         workflow.add_node("Risky Analyst Ans", risky_analyst_ans)
@@ -191,7 +183,6 @@ class GraphSetup:
         workflow.add_node("Safe Analyst Ask", safe_analyst_ask)
         workflow.add_node("Safe Analyst Ans", safe_analyst_ans)
         workflow.add_node("Risk Judge", risk_manager_node)
-        workflow.add_node("Msg Clear Risk Judge", delete_nodes["riskJudge"])
         workflow.add_node("tools_Risk Judge", tool_nodes["riskJudge"])
         workflow.add_node("Quant Options Manager", quant_options_manager_node)
         workflow.add_node("Portfolio Optimizer", portfolio_optimizer_node)
@@ -221,17 +212,6 @@ class GraphSetup:
                 workflow.add_edge(current_clear, next_analyst)
             else:
                 workflow.add_edge(current_clear, "Bull Researcher")
-
-        # Connect Risk Judge in sequence
-        workflow.add_conditional_edges(
-            "Risk Judge",
-            self.conditional_logic.should_continue_risk_judgment,
-            ["tools_Risk Judge", "Msg Clear Risk Judge"]
-        )
-        workflow.add_edge("tools_Risk Judge", "Risk Judge")
-        # Removed unconditional edge from Risk Judge to Msg Clear Risk Judge to ensure tools can run
-        # Removed edge from Msg Clear Risk Judge to Trader; flow now proceeds to Portfolio Optimizer only
-        
 
         # Add remaining edges
         workflow.add_conditional_edges(
@@ -312,16 +292,8 @@ class GraphSetup:
             },
         )
 
-        # Direct flow from Risk Judge (after clearing) to Quant Options Manager to Portfolio Optimizer to  END
-        workflow.add_edge("Msg Clear Risk Judge", "Quant Options Manager")
-
-        workflow.add_conditional_edges(
-            "Risk Judge",
-            self.conditional_logic.should_continue_portfolio_flow,
-            {
-                "Quant Options Manager": "Quant Options Manager",
-                "END": END,
-            },
+        workflow.add_edge(
+            "Risk Judge", "Quant Options Manager",
         )
         workflow.add_edge("Quant Options Manager", "Portfolio Optimizer")
         workflow.add_edge("Portfolio Optimizer", END)

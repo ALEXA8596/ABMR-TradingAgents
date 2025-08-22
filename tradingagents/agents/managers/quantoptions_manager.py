@@ -1,12 +1,12 @@
 import os
 from datetime import datetime
 from typing import Dict, Any
-
+from tradingagents.agents.utils.agent_states import AgentState
 from tradingagents.blackboard.utils import create_agent_blackboard
 
 
 def create_quant_options_manager(llm, memory, toolkit):
-    def quant_options_manager_node(state: Dict[str, Any]) -> Dict[str, Any]:
+    def quant_options_manager_node(state: AgentState) -> Dict[str, Any]:
         """
         Enterprise-grade quantitative options strategy manager.
 

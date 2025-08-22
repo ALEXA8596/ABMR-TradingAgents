@@ -59,13 +59,14 @@ class ConditionalLogic:
             return "tools_fundamentals"
         return "Msg Clear Fundamentals"
     
-    # def should_continue_trader(self, state: AgentState):
-    #     """Determine if trader should continue."""
-    #     messages = state["messages"]
-    #     last_message = messages[-1]
-    #     if last_message.tool_calls:
-    #         return "tools_trader"
-    #     return "Msg Clear Trader"
+    def should_continue_macroeconomic(self, state: AgentState):
+        """Determine if macroeconomic analysis should continue."""
+        messages = state["messages"]
+        last_message = messages[-1]
+        if last_message.tool_calls:
+            return "tools_macroeconomic"
+        return "Msg Clear Macroeconomic"
+    
     def should_continue_risk_judgment(self, state: AgentState):
         """Determine if risk judgment should continue."""
         messages = state["messages"]
@@ -195,18 +196,18 @@ class ConditionalLogic:
             print("[DEBUG] Next: Safe Analyst")
             return "Safe Analyst"
         else:
-            # For counts >= 9, repeat 4-9 as needed
+            # For counts >= 9, repeat sequence 4-9 pattern (mapped via repeat_sequence) dynamically
             repeat_sequence = [
-                "Risky Analyst Ask",
-                "Risky Analyst Ans",
-                "Safe Analyst Ask",
-                "Risky Analyst Ans",
-                "Risky Analyst",
-                "Safe Analyst",
+                "Risky Analyst Ask",  # analogous to original position 4
+                "Risky Analyst Ans",  # 5
+                "Safe Analyst Ask",   # 6
+                "Risky Analyst Ans",  # 7
+                "Risky Analyst",      # 8
+                "Safe Analyst",       # 9
             ]
             idx = (count - 3) % len(repeat_sequence)
             next_role = repeat_sequence[idx]
-            print(f"[DEBUG] Next: {next_role}")
+            print(f"[DEBUG] Next (loop): {next_role}")
             return next_role
 
     def should_continue_portfolio_flow(self, state: AgentState) -> str:
