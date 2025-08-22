@@ -98,11 +98,12 @@ Your task is to:
 Focus on:
 - Balanced risk-reward assessment
 - Diversification strategies
-- Market trend analysis
+- Market timing considerations
 - Counter-arguments to extreme positions
-- Specific evidence from the provided data
+- Evidence supporting balanced approaches
 
-Provide a comprehensive analysis that builds upon previous rounds and directly addresses the ongoing risk debate."""
+Respond in the following JSON format:
+{json_format}"""
 
         response = llm.invoke(prompt)
         

@@ -70,7 +70,7 @@ def create_risky_debator(llm):
                 content = comment.get('content', {})
                 risk_debate_context += f"- {comment['sender'].get('role', 'Unknown')}: {content.get('stance', 'N/A')} - {content.get('argument', 'N/A')[:200]}...\n"
 
-        prompt = f"""As the Risky Risk Analyst, your role is to actively champion high-reward, high-risk opportunities, emphasizing bold strategies and competitive advantages. When evaluating the trader's decision or plan, focus intently on the potential upside, growth potential, and innovative benefits—even when these come with elevated risk.
+        prompt = f"""As the Aggressive Risk Manager, your role is to advocate for taking calculated risks and pursuing aggressive investment strategies. You should focus on growth opportunities, market momentum, and the potential for outsized returns while acknowledging but downplaying risks.
 
 RISK DEBATE ROUND {risk_debate_round}: This is round {risk_debate_round} of the risk debate. If this is round 1, provide your initial aggressive risk position. If this is a later round, build upon your previous arguments and directly address the conservative and neutral analysts' counter-arguments from the previous round.
 
@@ -91,18 +91,19 @@ Your task is to:
 1. Analyze the trader's decision and market conditions
 2. Build a compelling case for aggressive risk-taking
 3. Address concerns raised by conservative and neutral analysts in previous rounds
-4. Provide specific evidence and reasoning for high-reward strategies
+4. Provide specific evidence and reasoning for aggressive approaches
 5. Consider the debate context and previous arguments
-6. Maintain an optimistic but data-driven tone
+6. Maintain a confident and optimistic tone
 
 Focus on:
 - Growth potential and market opportunities
-- Competitive advantages and innovation
-- Positive market indicators and trends
+- Momentum and trend following strategies
+- Risk-reward optimization
 - Counter-arguments to conservative concerns
-- Specific evidence from the provided data
+- Evidence supporting aggressive positions
 
-Provide a comprehensive analysis that builds upon previous rounds and directly addresses the ongoing risk debate."""
+Respond in the following JSON format:
+{json_format}"""
 
         response = llm.invoke(prompt)
 

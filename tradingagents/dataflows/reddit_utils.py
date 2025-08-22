@@ -48,6 +48,34 @@ ticker_to_company = {
     "PINS": "Pinterest",
 }
 
+def get_top_reddit_posts_for_ticker(ticker: str, date: str, max_limit_per_day: int, data_dir: str = "data/reddit_data"):
+    """
+    Reads the reddit data file for the ticker, filters posts within 7 days before and on the given date,
+    and returns the top max_limit_per_day posts sorted by score.
+    Args:
+        ticker (str): Ticker symbol, e.g. 'AAPL'
+        date (str): Date in yyyy-mm-dd format
+        max_limit_per_day (int): Maximum number of posts to return
+        data_dir (str): Directory containing reddit data files
+    Returns:
+        list: Top posts sorted by score
+    """
+    filename = f"wallstreetbets_{ticker}_2025-01-01_2025-08-19.json"
+    file_path = os.path.join(data_dir, filename)
+    if not os.path.exists(file_path):
+        return []
+    with open(file_path, "r", encoding="utf-8") as f:
+        posts = json.load(f)
+    # Parse date and filter
+    target_date = datetime.strptime(date, "%Y-%m-%d")
+    min_date = target_date - timedelta(days=7)
+    filtered = [
+        post for post in posts
+        if "posted_date" in post and min_date.strftime("%Y-%m-%d") <= post["posted_date"] <= date
+    ]
+    # Sort by score descending
+    filtered.sort(key=lambda x: x.get("score", 0), reverse=True)
+    return filtered[:max_limit_per_day]
 
 def fetch_top_from_category(
     category: Annotated[

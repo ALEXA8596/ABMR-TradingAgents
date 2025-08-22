@@ -82,6 +82,7 @@ class TradingAgentsGraph:
         self.trader_memory = FinancialSituationMemory("trader_memory", self.config)
         self.invest_judge_memory = FinancialSituationMemory("invest_judge_memory", self.config)
         self.risk_manager_memory = FinancialSituationMemory("risk_manager_memory", self.config)
+        self.portfolio_optimizer_memory = FinancialSituationMemory("portfolio_optimizer_memory", self.config)
 
         # Create tool nodes
         self.tool_nodes = self._create_tool_nodes()
@@ -102,6 +103,7 @@ class TradingAgentsGraph:
             self.trader_memory,
             self.invest_judge_memory,
             self.risk_manager_memory,
+            self.portfolio_optimizer_memory,
             self.conditional_logic,
         )
 
@@ -196,6 +198,17 @@ class TradingAgentsGraph:
                     self.toolkit.get_simfin_balance_sheet,
                     self.toolkit.get_simfin_cashflow,
                     self.toolkit.get_simfin_income_stmt,
+                ]
+            ),
+            # Trader-specific tools (execution and portfolio helpers)
+            "riskJudge": ToolNode(
+                [
+                    # Execution tools
+                    self.toolkit.buy,
+                    self.toolkit.hold,
+                    self.toolkit.sell,
+                    self.toolkit.get_portfolio,
+                    self.toolkit.get_price,
                 ]
             ),
         }

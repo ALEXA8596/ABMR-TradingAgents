@@ -8,3 +8,8 @@ eval_data/
 *.egg-info/
 .env
 results
+venv/
+node_modules
+archive
+data
+*.jsonl

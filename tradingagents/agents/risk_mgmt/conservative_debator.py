@@ -71,7 +71,7 @@ def create_safe_debator(llm):
                 content = comment.get('content', {})
                 risk_debate_context += f"- {comment['sender'].get('role', 'Unknown')}: {content.get('stance', 'N/A')} - {content.get('argument', 'N/A')[:200]}...\n"
 
-        prompt = f"""As the Safe/Conservative Risk Analyst, your primary objective is to protect assets, minimize volatility, and ensure steady, reliable growth. You prioritize stability, security, and risk mitigation, carefully assessing potential losses, economic downturns, and market volatility.
+        prompt = f"""As the Conservative Risk Manager, your role is to advocate for cautious, risk-averse investment strategies. You should focus on capital preservation, risk mitigation, and stable, predictable returns while highlighting the dangers of aggressive approaches.
 
 RISK DEBATE ROUND {risk_debate_round}: This is round {risk_debate_round} of the risk debate. If this is round 1, provide your initial conservative risk position. If this is a later round, build upon your previous arguments and directly address the aggressive and neutral analysts' counter-arguments from the previous round.
 
@@ -91,19 +91,20 @@ Fundamentals: {fundamentals_report}
 Your task is to:
 1. Analyze the trader's decision and market conditions
 2. Build a compelling case for conservative risk management
-3. Address concerns raised by aggressive and neutral analysts in previous rounds
-4. Provide specific evidence and reasoning for risk mitigation
+3. Address arguments raised by aggressive and neutral analysts in previous rounds
+4. Provide specific evidence and reasoning for cautious approaches
 5. Consider the debate context and previous arguments
-6. Maintain a cautious but data-driven tone
+6. Maintain a cautious and protective tone
 
 Focus on:
 - Risk identification and assessment
-- Asset protection strategies
-- Market volatility concerns
+- Capital preservation strategies
+- Diversification and hedging approaches
 - Counter-arguments to aggressive positions
-- Specific evidence from the provided data
+- Evidence supporting conservative stances
 
-Provide a comprehensive analysis that builds upon previous rounds and directly addresses the ongoing risk debate."""
+Respond in the following JSON format:
+{json_format}"""
 
         response = llm.invoke(prompt)
         

@@ -5,6 +5,7 @@ from langchain_openai import ChatOpenAI
 from tradingagents.agents import *
 from langgraph.prebuilt import ToolNode
 from langgraph.graph import END, StateGraph, START, MessagesState
+from langgraph.graph.message import AnyMessage, add_messages
 
 
 # Researcher team state
@@ -47,6 +48,16 @@ class RiskDebateState(TypedDict):
     count: Annotated[int, "Length of the current conversation"]  # Conversation length
 
 
+# Portfolio optimization state
+class PortfolioOptimizationState(TypedDict):
+    position_sizing: Annotated[dict, "Optimized position weights and methodology"]
+    hedging_strategy: Annotated[dict, "Proposed hedging instruments and parameters"]
+    beta_hedge: Annotated[dict, "Beta neutral hedge plan"]
+    risk_metrics: Annotated[dict, "Risk / return metrics for the portfolio"]
+    final_recommendation: Annotated[str, "Concise optimisation recommendation"]
+    confidence: Annotated[str, "Confidence level (1-100)"]
+
+
 class AgentState(MessagesState):
     company_of_interest: Annotated[str, "Company that we are interested in trading"]
     trade_date: Annotated[str, "What date we are trading at"]
@@ -72,3 +83,15 @@ class AgentState(MessagesState):
         RiskDebateState, "Current state of the debate on evaluating risk"
     ]
     final_trade_decision: Annotated[dict, "Final decision made by the Risk Analysts"]
+
+    # portfolio optimisation step
+    portfolio_optimization_state: Annotated[
+        PortfolioOptimizationState, "Quantitative portfolio optimisation output"
+    ]
+    optimized_position_sizing: Annotated[dict, "Optimised position sizing"]
+    hedging_strategy: Annotated[dict, "Hedging strategy details"]
+    beta_hedging_plan: Annotated[dict, "Market beta hedge implementation plan"]
+
+    # quant options manager outputs
+    quant_options_report_file: Annotated[str, "Path to Quant Options Manager markdown report"]
+    quant_strategies: Annotated[dict, "Selected quantitative strategies forwarded to optimizer"]

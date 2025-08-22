@@ -19,6 +19,22 @@ class ConditionalLogic:
             return "tools_market"
         return "Msg Clear Market"
 
+    def should_continue_quant_market(self, state: AgentState):
+        """Determine if quant market analysis should continue."""
+        messages = state["messages"]
+        last_message = messages[-1]
+        if last_message.tool_calls:
+            return "tools_quant_market"
+        return "Msg Clear Quant_market"
+
+    def should_continue_macroeconomic(self, state: AgentState):
+        """Determine if macroeconomic analysis should continue."""
+        messages = state["messages"]
+        last_message = messages[-1]
+        if last_message.tool_calls:
+            return "tools_macroeconomic"
+        return "Msg Clear Macroeconomic"
+
     def should_continue_social(self, state: AgentState):
         """Determine if social media analysis should continue."""
         messages = state["messages"]
@@ -42,10 +58,24 @@ class ConditionalLogic:
         if last_message.tool_calls:
             return "tools_fundamentals"
         return "Msg Clear Fundamentals"
+    
+    # def should_continue_trader(self, state: AgentState):
+    #     """Determine if trader should continue."""
+    #     messages = state["messages"]
+    #     last_message = messages[-1]
+    #     if last_message.tool_calls:
+    #         return "tools_trader"
+    #     return "Msg Clear Trader"
+    def should_continue_risk_judgment(self, state: AgentState):
+        """Determine if risk judgment should continue."""
+        messages = state["messages"]
+        last_message = messages[-1]
+        if last_message.tool_calls:
+            return "tools_Risk Judge"
+        return "Msg Clear Risk Judge"
 
     def should_continue_debate(self, state: AgentState) -> str:
         """Determine if debate should continue."""
-
         # 1 => Bull Researcher
         # 2 => Bear Researcher
         # 3 => Bull Researcher Ask
@@ -178,3 +208,12 @@ class ConditionalLogic:
             next_role = repeat_sequence[idx]
             print(f"[DEBUG] Next: {next_role}")
             return next_role
+
+    def should_continue_portfolio_flow(self, state: AgentState) -> str:
+        """Determine if portfolio optimization flow should continue."""
+        # Check if portfolio optimization has been completed
+        if "portfolio_optimization_state" not in state or not state["portfolio_optimization_state"]:
+            # First go to Quant Options Manager in the enterprise flow
+            return "Quant Options Manager"
+        else:
+            return "END"

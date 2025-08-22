@@ -1,18 +1,24 @@
 import time
 import json
 from tradingagents.blackboard.utils import create_agent_blackboard
+from tradingagents.agents.utils.debate_utils import get_debate_round_info
 
 
 def create_research_manager(llm, memory):
     def research_manager_node(state) -> dict:
+        print(f"[DEBUG] Research Manager executing...")
         ticker = state["company_of_interest"]
-        history = state["investment_debate_state"].get("history", "")
+        investment_debate_state = state["investment_debate_state"]
+        history = investment_debate_state.get("history", "[]")
+        bull_history = investment_debate_state.get("bull_history", "[]")
+        bear_history = investment_debate_state.get("bear_history", "[]")
+        
+        print(f"[DEBUG] Research Manager: Count = {investment_debate_state.get('count', 0)}")
+
         market_research_report = state["market_report"]
         sentiment_report = state["sentiment_report"]
         news_report = state["news_report"]
         fundamentals_report = state["fundamentals_report"]
-
-        investment_debate_state = state["investment_debate_state"]
 
         # Blackboard integration
         blackboard_agent = create_agent_blackboard("RM_001", "ResearchManager")
@@ -105,11 +111,11 @@ Respond ONLY with a valid JSON object in the following format:
         )
 
         new_investment_debate_state = {
-            "judge_decision": response.content,
-            "history": investment_debate_state.get("history", "[]"),
-            "bear_history": investment_debate_state.get("bear_history", "[]"),
-            "bull_history": investment_debate_state.get("bull_history", "[]"),
+            "history": history,
+            "bull_history": bull_history,
+            "bear_history": bear_history,
             "current_response": response.content,
+            "judge_decision": decision,
             "count": investment_debate_state["count"],
         }
 
