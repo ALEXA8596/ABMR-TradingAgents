@@ -470,24 +470,33 @@ class Toolkit:
         # Ensure portfolio file exists
         if not os.path.exists(portfolio_path):
             with open(portfolio_path, "w") as f:
-                json.dump({}, f)
+                json.dump({"liquid": 100000}, f)
 
         portfolio = json.load(open(portfolio_path, "r"))
         stockportfolio = portfolio.get(ticker, {
             "totalAmount": 0,
             "trades": []
         })
-        # Initialize fields
-        stockportfolio['totalAmount'] = stockportfolio.get('totalAmount', 0) + quantity
-        if 'trades' not in stockportfolio:
-            stockportfolio['trades'] = []
-
+        
         # Get current price for the ticker
         try:
             stock = yf.Ticker(ticker)
             current_price = float(stock.history(period="1d")['Close'].iloc[-1])
-        except Exception:
+        except Exception as e:
+            print(f"⚠️ Warning: Could not fetch current price for {ticker}: {str(e)}")
             current_price = 0.0
+
+        # Check if we have enough liquid cash
+        liquid = portfolio.get("liquid", 0)
+        required_cash = quantity * current_price
+        
+        if liquid < required_cash:
+            return f"❌ Insufficient funds: Need ${required_cash:.2f} but only have ${liquid:.2f} liquid cash"
+        
+        # Initialize fields
+        stockportfolio['totalAmount'] = stockportfolio.get('totalAmount', 0) + quantity
+        if 'trades' not in stockportfolio:
+            stockportfolio['trades'] = []
 
         total_value = stockportfolio['totalAmount'] * current_price
         transaction = {
@@ -499,13 +508,19 @@ class Toolkit:
         }
         stockportfolio['trades'].append(transaction)
         portfolio[ticker] = stockportfolio
-        portfolio['liquid'] = portfolio.get('liquid', 0) - (quantity * current_price)
+        portfolio['liquid'] = liquid - required_cash
+        
         # Ensure liquid amount is not negative
         if portfolio['liquid'] < 0:
             portfolio['liquid'] = 0
+            
         with open(portfolio_path, "w") as f:
             json.dump(portfolio, f, indent=2)
-        return f"Bought {quantity} shares of {ticker}."
+            
+        print(f"✅ BUY EXECUTED: {quantity} shares of {ticker} at ${current_price:.2f} for ${required_cash:.2f}")
+        print(f"💰 Remaining liquid cash: ${portfolio['liquid']:.2f}")
+        
+        return f"Bought {quantity} shares of {ticker} at ${current_price:.2f} per share. Total cost: ${required_cash:.2f}"
 
     @staticmethod
     @tool
@@ -521,7 +536,7 @@ class Toolkit:
         portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json")
         if not os.path.exists(portfolio_path):
             with open(portfolio_path, "w") as f:
-                json.dump({}, f)
+                json.dump({"liquid": 100000}, f)
 
         portfolio = json.load(open(portfolio_path, "r"))
         stockportfolio = portfolio.get(ticker, {
@@ -541,8 +556,12 @@ class Toolkit:
         }
         stockportfolio['trades'].append(transaction)
         portfolio[ticker] = stockportfolio
+        
         with open(portfolio_path, "w") as f:
             json.dump(portfolio, f, indent=2)
+            
+        print(f"✅ HOLD EXECUTED: {ticker} - {note if note else 'No action taken'}")
+        
         return f"Recorded HOLD for {ticker}. {('Note: ' + note) if note else ''}"
 
     @staticmethod
@@ -571,12 +590,18 @@ class Toolkit:
         if current_shares <= 0:
             return f"No shares of {ticker} to sell."
         sell_qty = min(quantity, current_shares)
+        
         # Get current price
         try:
             stock = yf.Ticker(ticker)
             current_price = float(stock.history(period="1d")['Close'].iloc[-1])
-        except Exception:
+        except Exception as e:
+            print(f"⚠️ Warning: Could not fetch current price for {ticker}: {str(e)}")
             current_price = 0.0
+
+        # Calculate proceeds from sale
+        sale_proceeds = sell_qty * current_price
+        liquid = portfolio.get("liquid", 0)
 
         stockportfolio['totalAmount'] = current_shares - sell_qty
         if 'trades' not in stockportfolio:
@@ -590,13 +615,15 @@ class Toolkit:
         }
         stockportfolio['trades'].append(transaction)
         portfolio[ticker] = stockportfolio
-        portfolio['liquid'] = portfolio.get('liquid', 0) + (sell_qty * current_price)
-        # Ensure liquid amount is not negative
-        if portfolio['liquid'] < 0:
-            portfolio['liquid'] = 0
+        portfolio['liquid'] = liquid + sale_proceeds
+        
         with open(portfolio_path, "w") as f:
             json.dump(portfolio, f, indent=2)
-        return f"Sold {sell_qty} shares of {ticker}."
+            
+        print(f"✅ SELL EXECUTED: {sell_qty} shares of {ticker} at ${current_price:.2f} for ${sale_proceeds:.2f}")
+        print(f"💰 Remaining liquid cash: ${portfolio['liquid']:.2f}")
+        
+        return f"Sold {sell_qty} shares of {ticker} at ${current_price:.2f} per share. Total proceeds: ${sale_proceeds:.2f}"
 
     @staticmethod
     @tool
