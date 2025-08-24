@@ -15,9 +15,9 @@ def test_portfolio_execution():
         print("🧪 Testing Portfolio Execution Functions...")
         print("=" * 50)
         
-        # Test buy function
+        # Test buy function - call the implementation directly
         print("\n1. Testing BUY function...")
-        result = Toolkit.buy("AAPL", "2025-01-20", 10)
+        result = Toolkit.buy_impl("AAPL", "2025-01-20", 10)
         print(f"Result: {result}")
         
         # Test portfolio reading
@@ -31,14 +31,14 @@ def test_portfolio_execution():
         else:
             print("❌ Portfolio file not found!")
             
-        # Test sell function
+        # Test sell function - call the implementation directly
         print("\n3. Testing SELL function...")
-        result = Toolkit.sell("AAPL", "2025-01-20", 5)
+        result = Toolkit.sell_impl("AAPL", "2025-01-20", 5)
         print(f"Result: {result}")
         
-        # Test hold function
+        # Test hold function - call the implementation directly
         print("\n4. Testing HOLD function...")
-        result = Toolkit.hold("AAPL", "2025-01-20", "Testing hold function")
+        result = Toolkit.hold_impl("AAPL", "2025-01-20", "Testing hold function")
         print(f"Result: {result}")
         
         # Final portfolio state
