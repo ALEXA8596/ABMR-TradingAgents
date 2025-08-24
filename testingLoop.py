@@ -6,7 +6,9 @@ from pathlib import Path
 
 from tradingagents.graph.trading_graph import TradingAgentsGraph  # [`tradingagents.graph.trading_graph.TradingAgentsGraph`](tradingagents/graph/trading_graph.py)
 from tradingagents.default_config import DEFAULT_CONFIG  # [`DEFAULT_CONFIG`](tradingagents/default_config.py)
+import dotenv
 
+dotenv.load_dotenv()
 
 def daterange(start: datetime, end: datetime):
     days = (end - start).days

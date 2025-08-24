@@ -238,31 +238,57 @@ class GraphSetup:
                 "Research Manager": "Research Manager",
             },
         )
+        
+        # Replace former Cross Examination conditional edges with Ask/Ans node edges
         workflow.add_conditional_edges(
-            "Bull Cross Examination Researcher",
+            "Bull Researcher Ask",
             self.conditional_logic.should_continue_debate,
             {
+                "Bull Researcher Ans": "Bull Researcher Ans",
+                "Bear Researcher Ask": "Bear Researcher Ask",
+                "Bear Researcher Ans": "Bear Researcher Ans",
                 "Bull Researcher": "Bull Researcher",
                 "Bear Researcher": "Bear Researcher",
-                "Bull Researcher Ask": "Bull Researcher Ask",
-                "Bear Researcher Ask": "Bear Researcher Ask",
-                "Bull Researcher Ans": "Bull Researcher Ans",
-                "Bear Researcher Ans": "Bear Researcher Ans",
-            },
-        )
-        workflow.add_conditional_edges(
-            "Bear Cross Examination Researcher",
-            self.conditional_logic.should_continue_debate,
-            {
-                "Bull Researcher": "Bull Researcher",
-                "Bear Researcher": "Bear Researcher",
-                "Bull Researcher Ask": "Bull Researcher Ask",
-                "Bear Researcher Ask": "Bear Researcher Ask",
-                "Bull Researcher Ans": "Bull Researcher Ans",
-                "Bear Researcher Ans": "Bear Researcher Ans",
                 "Research Manager": "Research Manager",
             },
         )
+        workflow.add_conditional_edges(
+            "Bull Researcher Ans",
+            self.conditional_logic.should_continue_debate,
+            {
+                "Bear Researcher Ask": "Bear Researcher Ask",
+                "Bear Researcher Ans": "Bear Researcher Ans",
+                "Bull Researcher": "Bull Researcher",
+                "Bear Researcher": "Bear Researcher",
+                "Bull Researcher Ask": "Bull Researcher Ask",
+                "Research Manager": "Research Manager",
+            },
+        )
+        workflow.add_conditional_edges(
+            "Bear Researcher Ask",
+            self.conditional_logic.should_continue_debate,
+            {
+                "Bear Researcher Ans": "Bear Researcher Ans",
+                "Bull Researcher Ask": "Bull Researcher Ask",
+                "Bull Researcher Ans": "Bull Researcher Ans",
+                "Bull Researcher": "Bull Researcher",
+                "Bear Researcher": "Bear Researcher",
+                "Research Manager": "Research Manager",
+            },
+        )
+        workflow.add_conditional_edges(
+            "Bear Researcher Ans",
+            self.conditional_logic.should_continue_debate,
+            {
+                "Bull Researcher Ask": "Bull Researcher Ask",
+                "Bull Researcher Ans": "Bull Researcher Ans",
+                "Bull Researcher": "Bull Researcher",
+                "Bear Researcher": "Bear Researcher",
+                "Bear Researcher Ask": "Bear Researcher Ask",
+                "Research Manager": "Research Manager",
+            },
+        )
+        
         workflow.add_edge("Research Manager", "Trader")
         
         workflow.add_edge("Trader", "Risky Analyst")

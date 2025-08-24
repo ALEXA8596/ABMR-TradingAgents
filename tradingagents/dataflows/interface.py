@@ -85,7 +85,10 @@ def get_finnhub_news(
     if config["abmrOffline"]:
         for entry in result:
             if entry not in seen_dicts:
-                combined_result += f"### {entry['headline']} ({entry['date']}):\n{entry['summary']}\n\n"
+                headline = entry.get('headline', '')
+                date = entry.get('date', '')
+                summary = entry.get('summary', '')
+                combined_result += f"### {headline} ({date}):\n{summary}\n\n"
                 seen_dicts.append(entry)
         return f"## {ticker} News, from {before} to {curr_date}:\n" + str(combined_result)
 
@@ -919,7 +922,7 @@ def get_stock_stats_indicators_window(
                 f"market_data/price_data/{symbol}-YFin-data-2015-01-01-2025-07-27.csv",
             )  # type: ignore
         )
-        print("Successfully fetched data")
+        # print("Successfully fetched data")
         data["Date"] = pd.to_datetime(data["Date"], utc=True)
         dates_in_df = data["Date"].astype(str).str[:10]
 

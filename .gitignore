@@ -13,3 +13,7 @@ node_modules
 archive
 data
 *.jsonl
+*.zip
+portfolio.example.json
+/evalRes
+portfolio.json

@@ -467,60 +467,51 @@ class Toolkit:
     def buy_impl(ticker, date: Annotated[str, "Date of the purchase in yyyy-mm-dd format"], quantity = 1) -> str:
         """Implementation to buy shares and persist to portfolio.json"""
         portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json")
-        # Ensure portfolio file exists
         if not os.path.exists(portfolio_path):
             with open(portfolio_path, "w") as f:
-                json.dump({"liquid": 100000}, f)
-
-        portfolio = json.load(open(portfolio_path, "r"))
-        stockportfolio = portfolio.get(ticker, {
-            "totalAmount": 0,
-            "trades": []
-        })
-        
-        # Get current price for the ticker
+                json.dump({"portfolio": {}, "liquid": 0}, f)
+        data = json.load(open(portfolio_path, "r"))
+        if "portfolio" not in data or not isinstance(data["portfolio"], dict):
+            data["portfolio"] = {}
+        holdings = data["portfolio"].get(ticker, {"totalAmount": 0, "trades": []})
+        # Fetch current price
         try:
             stock = yf.Ticker(ticker)
+            current_price = float(stock.history(period="1d")["Close"].iloc[-1])
+        except Exception:
             current_price = float(stock.history(period="1d")['Close'].iloc[-1])
         except Exception as e:
             print(f"⚠️ Warning: Could not fetch current price for {ticker}: {str(e)}")
             current_price = 0.0
-
-        # Check if we have enough liquid cash
-        liquid = portfolio.get("liquid", 0)
-        required_cash = quantity * current_price
-        
-        if liquid < required_cash:
-            return f"❌ Insufficient funds: Need ${required_cash:.2f} but only have ${liquid:.2f} liquid cash"
-        
-        # Initialize fields
-        stockportfolio['totalAmount'] = stockportfolio.get('totalAmount', 0) + quantity
-        if 'trades' not in stockportfolio:
-            stockportfolio['trades'] = []
-
-        total_value = stockportfolio['totalAmount'] * current_price
+        # Update liquidity if present
+        if "liquid" not in data:
+            data["liquid"] = 0
+        cost = quantity * current_price
+        if data["liquid"] < cost and current_price > 0:
+            quantity = int(data["liquid"] // current_price)
+            cost = quantity * current_price
+            if quantity == 0:
+                return f"Insufficient liquidity to buy {ticker}."
+        holdings["totalAmount"] = holdings.get("totalAmount", 0) + quantity
+        if "trades" not in holdings:
+            holdings["trades"] = []
         transaction = {
             "date": date,
             "type": "BUY",
             "quantity": quantity,
             "price_per_share": current_price,
-            "total_value": total_value,
+            "total_value": holdings["totalAmount"] * current_price,
+            "ticker": ticker
         }
-        stockportfolio['trades'].append(transaction)
-        portfolio[ticker] = stockportfolio
-        portfolio['liquid'] = liquid - required_cash
-        
-        # Ensure liquid amount is not negative
-        if portfolio['liquid'] < 0:
-            portfolio['liquid'] = 0
-            
+        holdings["trades"].append(transaction)
+        data["portfolio"][ticker] = holdings
+        data["liquid"] = max(0, data.get("liquid", 0) - cost)
         with open(portfolio_path, "w") as f:
-            json.dump(portfolio, f, indent=2)
-            
-        print(f"✅ BUY EXECUTED: {quantity} shares of {ticker} at ${current_price:.2f} for ${required_cash:.2f}")
-        print(f"💰 Remaining liquid cash: ${portfolio['liquid']:.2f}")
-        
-        return f"Bought {quantity} shares of {ticker} at ${current_price:.2f} per share. Total cost: ${required_cash:.2f}"
+            json.dump(data, f, indent=2)
+        print(f"✅ BUY EXECUTED: {quantity} shares of {ticker} at ${current_price:.2f} for ${cost:.2f}")
+        print(f"💰 Remaining liquid cash: ${data['liquid']:.2f}")
+
+        return f"Bought {quantity} shares of {ticker} at ${current_price:.2f} per share. Total cost: ${cost:.2f}"
 
     @staticmethod
     @tool
@@ -536,29 +527,25 @@ class Toolkit:
         portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json")
         if not os.path.exists(portfolio_path):
             with open(portfolio_path, "w") as f:
-                json.dump({"liquid": 100000}, f)
-
-        portfolio = json.load(open(portfolio_path, "r"))
-        stockportfolio = portfolio.get(ticker, {
-            "totalAmount": 0,
-            "trades": []
-        })
-        if 'trades' not in stockportfolio:
-            stockportfolio['trades'] = []
-
-        transaction = {
+                json.dump({"portfolio": {}, "liquid": 0}, f)
+        data = json.load(open(portfolio_path, "r"))
+        if "portfolio" not in data or not isinstance(data["portfolio"], dict):
+            data["portfolio"] = {}
+        holdings = data["portfolio"].get(ticker, {"totalAmount": 0, "trades": []})
+        if "trades" not in holdings:
+            holdings["trades"] = []
+        holdings["trades"].append({
             "date": date,
             "type": "HOLD",
             "quantity": 0,
             "price_per_share": None,
             "total_value": None,
             "note": note,
-        }
-        stockportfolio['trades'].append(transaction)
-        portfolio[ticker] = stockportfolio
-        
+            "ticker": ticker
+        })
+        data["portfolio"][ticker] = holdings
         with open(portfolio_path, "w") as f:
-            json.dump(portfolio, f, indent=2)
+            json.dump(data, f, indent=2)
             
         print(f"✅ HOLD EXECUTED: {ticker} - {note if note else 'No action taken'}")
         
@@ -581,48 +568,42 @@ class Toolkit:
         portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json")
         if not os.path.exists(portfolio_path):
             return f"No portfolio exists to sell {ticker}."
-        portfolio = json.load(open(portfolio_path, "r"))
-        stockportfolio = portfolio.get(ticker, {
-            "totalAmount": 0,
-            "trades": []
-        })
-        current_shares = stockportfolio.get('totalAmount', 0)
+        data = json.load(open(portfolio_path, "r"))
+        if "portfolio" not in data or ticker not in data["portfolio"]:
+            return f"No holdings for {ticker}."
+        holdings = data["portfolio"][ticker]
+        current_shares = holdings.get("totalAmount", 0)
         if current_shares <= 0:
             return f"No shares of {ticker} to sell."
+        if quantity <= 0:
+            return "Quantity must be positive."
         sell_qty = min(quantity, current_shares)
-        
-        # Get current price
         try:
             stock = yf.Ticker(ticker)
-            current_price = float(stock.history(period="1d")['Close'].iloc[-1])
-        except Exception as e:
-            print(f"⚠️ Warning: Could not fetch current price for {ticker}: {str(e)}")
+            current_price = float(stock.history(period="1d")["Close"].iloc[-1])
+        except Exception:
             current_price = 0.0
-
-        # Calculate proceeds from sale
-        sale_proceeds = sell_qty * current_price
-        liquid = portfolio.get("liquid", 0)
-
-        stockportfolio['totalAmount'] = current_shares - sell_qty
-        if 'trades' not in stockportfolio:
-            stockportfolio['trades'] = []
-        transaction = {
+        holdings["totalAmount"] = current_shares - sell_qty
+        if "trades" not in holdings:
+            holdings["trades"] = []
+        holdings["trades"].append({
             "date": date,
             "type": "SELL",
             "quantity": sell_qty,
             "price_per_share": current_price,
-            "total_value": stockportfolio['totalAmount'] * current_price,
-        }
-        stockportfolio['trades'].append(transaction)
-        portfolio[ticker] = stockportfolio
-        portfolio['liquid'] = liquid + sale_proceeds
-        
+            "total_value": holdings["totalAmount"] * current_price,
+            "ticker": ticker
+        })
+        data["portfolio"][ticker] = holdings
+        data["liquid"] = data.get("liquid", 0) + sell_qty * current_price
         with open(portfolio_path, "w") as f:
-            json.dump(portfolio, f, indent=2)
-            
-        print(f"✅ SELL EXECUTED: {sell_qty} shares of {ticker} at ${current_price:.2f} for ${sale_proceeds:.2f}")
-        print(f"💰 Remaining liquid cash: ${portfolio['liquid']:.2f}")
+            json.dump(data, f, indent=2)
         
+        sale_proceeds = sell_qty * current_price
+
+        print(f"✅ SELL EXECUTED: {sell_qty} shares of {ticker} at ${current_price:.2f} for ${sale_proceeds:.2f}")
+        print(f"💰 Remaining liquid cash: ${data['liquid']:.2f}")
+
         return f"Sold {sell_qty} shares of {ticker} at ${current_price:.2f} per share. Total proceeds: ${sale_proceeds:.2f}"
 
     @staticmethod
@@ -638,111 +619,57 @@ class Toolkit:
             dict: Kelly Criterion results for all trades and specific ticker
         """
         
-        # Read portfolio data
         portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json")
-        
         try:
             with open(portfolio_path, 'r') as f:
-                portfolio_data = json.load(f)
+                data = json.load(f)
         except FileNotFoundError:
             return {"error": "Portfolio file not found", "all_trades_kelly": 0.0, "ticker_kelly": 0.0}
-        
-        # Get current price for the ticker
+        portfolio_data = data.get("portfolio", {})
         try:
             stock = yf.Ticker(ticker)
-            current_price = stock.history(period="1d")['Close'].iloc[-1]
-        except:
+            current_price = stock.history(period="1d")["Close"].iloc[-1]
+        except Exception:
             return {"error": f"Could not fetch current price for {ticker}", "all_trades_kelly": 0.0, "ticker_kelly": 0.0}
-        
+
         def calculate_kelly(trades_data, current_price):
             """Calculate Kelly Criterion from trades data"""
             if not trades_data:
                 return 0.0
-            
-            wins = 0
-            losses = 0
-            total_win_return = 0.0
-            total_loss_return = 0.0
-            
+            wins = losses = 0
+            total_win_return = total_loss_return = 0.0
             for trade in trades_data:
                 if trade.get('type') == 'BUY':
-                    purchase_price = trade.get('pricePerStockAtPurchase', 0)
-                    if purchase_price > 0:
-                        # Calculate return based on current price vs purchase price
-                        return_pct = (current_price - purchase_price) / purchase_price
-                        
-                        if return_pct > 0:
-                            wins += 1
-                            total_win_return += return_pct
+                    purchase_price = trade.get('price_per_share') or trade.get('pricePerStockAtPurchase', 0)
+                    if purchase_price and purchase_price > 0:
+                        ret = (current_price - purchase_price) / purchase_price
+                        if ret > 0:
+                            wins += 1; total_win_return += ret
                         else:
-                            losses += 1
-                            total_loss_return += abs(return_pct)
-            
+                            losses += 1; total_loss_return += abs(ret)
             total_trades = wins + losses
-            if total_trades == 0:
+            if total_trades == 0 or wins == 0:
                 return 0.0
-            
-            # Calculate win probability and average returns
-            win_probability = wins / total_trades
-            avg_win_return = total_win_return / wins if wins > 0 else 0
-            avg_loss_return = total_loss_return / losses if losses > 0 else 0
-            
-            # Kelly Criterion formula: f* = (bp - q) / b
-            # where b = odds received on the wager (avg_win_return)
-            #       p = probability of winning (win_probability)
-            #       q = probability of losing (1 - win_probability)
-            if avg_loss_return == 0:
+            win_p = wins / total_trades
+            avg_win = total_win_return / wins if wins else 0
+            if avg_win == 0:
                 return 0.0
-            
-            kelly_fraction = (avg_win_return * win_probability - (1 - win_probability)) / avg_win_return
-            
-            # Cap Kelly fraction at reasonable limits (typically 0.25 or 25%)
-            return max(0.0, min(0.25, kelly_fraction))
-        
-        # Collect all trades (last 50)
+            kelly = (avg_win * win_p - (1 - win_p)) / avg_win
+            return max(0.0, min(0.25, kelly))
+
         all_trades = []
-        ticker_specific_trades = []
-        
-        for ticker_name, ticker_data in portfolio_data.get('portfolio', {}).items():
-            trades = ticker_data.get('trades', [])
-            
-            # Add to all trades
+        ticker_trades = []
+        for sym, info in portfolio_data.items():
+            trades = info.get('trades', [])
             all_trades.extend(trades)
-            
-            # Add to ticker-specific trades if it matches
-            for trade in trades:
-                if trade.get('ticker', '').upper() == ticker.upper():
-                    ticker_specific_trades.append(trade)
-        
-        # Sort by timestamp and take last 50
-        try:
-            all_trades.sort(key=lambda x: float(x.get('timestamp', 0)), reverse=True)
-            all_trades = all_trades[:50]
-            
-            ticker_specific_trades.sort(key=lambda x: float(x.get('timestamp', 0)), reverse=True)
-            ticker_specific_trades = ticker_specific_trades[:50]
-        except:
-            # If timestamp parsing fails, just use the trades as-is
-            all_trades = all_trades[:50]
-            ticker_specific_trades = ticker_specific_trades[:50]
-        
-        # Calculate Kelly Criterion for all trades
-        all_trades_kelly = calculate_kelly(all_trades, current_price)
-        
-        # Calculate Kelly Criterion for ticker-specific trades
-        ticker_kelly = calculate_kelly(ticker_specific_trades, current_price)
-        
+            if sym.upper() == ticker.upper():
+                ticker_trades.extend(trades)
+        all_trades = all_trades[-50:]
+        ticker_trades = ticker_trades[-50:]
         return {
-            # "ticker": ticker,
-            # "current_price": current_price,
-            # "all_trades_count": len(all_trades),
-            "ticker_trades_count": len(ticker_specific_trades),
-            "all_trades_kelly": round(all_trades_kelly, 4),
-            "ticker_kelly": round(ticker_kelly, 4),
-            "recommendation": {
-                "all_trades": f"Bet {all_trades_kelly:.1%} of capital based on all historical trades",
-                "ticker_specific": f"Bet {ticker_kelly:.1%} of capital based on {ticker} trades only"
-            }
+            "ticker_trades_count": len(ticker_trades),
+            "all_trades_kelly": round(calculate_kelly(all_trades, current_price), 4),
+            "ticker_kelly": round(calculate_kelly(ticker_trades, current_price), 4),
         }
     
     

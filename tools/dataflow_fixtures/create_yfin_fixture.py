@@ -23,7 +23,7 @@ def create_yfin_csv(symbol: str, end_date: str = None):
     start_date = "2015-01-01"
     if end_date is None:
         # default end date if not provided
-        end_date = "2025-03-25"
+        end_date = "2025-08-22"
 
     filename = os.path.join(PRICE_DIR, f"{symbol}-YFin-data-{start_date}-{end_date}.csv")
 
@@ -111,4 +111,4 @@ if __name__ == '__main__':
     
     for ticker in ticker_to_company.keys():
         print(f"Generating YFin CSV for {ticker} ({ticker_to_company[ticker]})...")
-        create_yfin_csv(ticker, '2025-07-27')
+        create_yfin_csv(ticker, '2025-08-22')
