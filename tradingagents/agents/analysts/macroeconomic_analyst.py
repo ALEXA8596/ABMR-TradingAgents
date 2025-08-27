@@ -8,8 +8,26 @@ def create_macroeconomic_analyst(llm, toolkit):
 
     def macroeconomic_analyst_node(state):
         current_date = state["trade_date"]
-        ticker = state["company_of_interest"]
-        company_name = state["company_of_interest"]
+        
+        # Handle both single ticker and multi-ticker modes
+        if "tickers" in state:
+            # Multi-ticker portfolio mode
+            tickers = state["tickers"]
+            ticker = tickers[0]  # Analyze first ticker for now
+            company_name = ticker
+            is_portfolio_mode = True
+        elif "company_of_interest" in state:
+            # Single ticker mode (backward compatibility)
+            ticker = state["company_of_interest"]
+            company_name = state["company_of_interest"]
+            is_portfolio_mode = False
+        else:
+            # Fallback - this shouldn't happen but let's handle it gracefully
+            print("Warning: No ticker information found in state")
+            return {
+                "messages": [],
+                "macroeconomic_report": "Error: No ticker information available",
+            }
 
         # Blackboard integration
         blackboard_agent = create_agent_blackboard("MEA_001", "MacroeconomicAnalyst")

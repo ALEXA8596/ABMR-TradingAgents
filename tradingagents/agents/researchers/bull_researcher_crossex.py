@@ -21,7 +21,7 @@ def create_bull_crossex_researcher(llm, memory):
         print(f"[DEBUG] Bear response: {str(bear_response)[:100]}...")
         
         # Get current debate round information
-        round_info = get_debate_round_info(state)
+        round_info = get_debate_round_info(state, ticker)
         current_round = round_info["round"]
         current_step = round_info["step_name"]
         
@@ -52,7 +52,7 @@ def create_bull_crossex_researcher(llm, memory):
 }"""
 
         # Read full debate context for multi-round debates
-        debate_round = investment_debate_state["count"] + 1
+        debate_round = investment_debate_state.get("count", 0) + 1
         recent_debate = blackboard_agent.get_debate_comments(topic=f"{ticker} Investment Debate")
         debate_context = ""
         if recent_debate:
@@ -140,14 +140,13 @@ Respond in the following JSON format:
             "bear_history": investment_debate_state.get("bear_history", "[]"),
             "current_response": crossex_json,
             "judge_decision": investment_debate_state.get("judge_decision", ""),
-            "count": investment_debate_state["count"],  # Keep current count
+            "count": investment_debate_state.get("count", 0),  # Keep current count
         }
 
         # Increment the count for the next step
         updated_state = {"investment_debate_state": new_investment_debate_state}
         updated_state = increment_debate_count(updated_state)
         
-        # Return the complete state update
         return updated_state
 
     return bull_crossex_node

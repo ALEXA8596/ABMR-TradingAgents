@@ -6,21 +6,53 @@ from tradingagents.blackboard.utils import create_agent_blackboard
 
 def create_safe_debator(llm):
     def safe_node(state) -> dict:
-        ticker = state.get("company_of_interest", "UNKNOWN")
-        risk_debate_state = state["risk_debate_state"]
-        history = risk_debate_state.get("history", "[]")
-        safe_history = risk_debate_state.get("safe_history", "[]")
+        # Handle both single ticker and multi-ticker portfolio modes
+        if "tickers" in state and state.get("tickers"):
+            # Multi-ticker portfolio mode - use the first ticker for now
+            ticker = state["tickers"][0] if state["tickers"] else "SPY"
+            is_portfolio_mode = True
+            
+            # Extract ticker-specific data from portfolio structure
+            individual_reports = state.get("individual_reports", {})
+            ticker_reports = individual_reports.get(ticker, {})
+            
+            risk_debate_states = state.get("risk_debate_states", {})
+            risk_debate_state = risk_debate_states.get(ticker, {})
+            
+            history = risk_debate_state.get("history", "[]")
+            safe_history = risk_debate_state.get("safe_history", "[]")
+            current_risky_response = risk_debate_state.get("current_risky_response", "")
+            current_neutral_response = risk_debate_state.get("current_neutral_response", "")
+            
+            market_research_report = ticker_reports.get("market_report", "")
+            sentiment_report = ticker_reports.get("sentiment_report", "")
+            news_report = ticker_reports.get("news_report", "")
+            fundamentals_report = ticker_reports.get("fundamentals_report", "")
+            trader_decision = ticker_reports.get("trader_investment_plan", "")
+            
+        elif "company_of_interest" in state:
+            # Single ticker mode (backward compatibility)
+            ticker = state.get("company_of_interest", "UNKNOWN")
+            is_portfolio_mode = False
+            
+            risk_debate_state = state["risk_debate_state"]
+            history = risk_debate_state.get("history", "[]")
+            safe_history = risk_debate_state.get("safe_history", "[]")
+            current_risky_response = risk_debate_state.get("current_risky_response", "")
+            current_neutral_response = risk_debate_state.get("current_neutral_response", "")
+            
+            market_research_report = state.get("market_report", "")
+            sentiment_report = state.get("sentiment_report", "")
+            news_report = state.get("news_report", "")
+            fundamentals_report = state.get("fundamentals_report", "")
+            trader_decision = state.get("trader_investment_plan", "")
+        else:
+            # Fallback - this shouldn't happen but let's handle it gracefully
+            print("Warning: No ticker information found in state")
+            return {
+                "current_safe_response": "Error: No ticker information available",
+            }
 
-        current_risky_response = risk_debate_state.get("current_risky_response", "")
-        current_neutral_response = risk_debate_state.get("current_neutral_response", "")
-
-        market_research_report = state["market_report"]
-        sentiment_report = state["sentiment_report"]
-        news_report = state["news_report"]
-        fundamentals_report = state["fundamentals_report"]
-
-        trader_decision = state["trader_investment_plan"]
-        
         json_format = """{  
   "content": "...", // Overall writeup of the response
   "arguments": [{
@@ -182,6 +214,18 @@ Respond in the following JSON format:
             "count": risk_debate_state["count"] + 1,
         }
 
-        return {"risk_debate_state": new_risk_debate_state}
+        if is_portfolio_mode:
+            return {
+                "risk_debate_states": {
+                    ticker: new_risk_debate_state
+                },
+                "individual_reports": {
+                    ticker: {
+                        "current_safe_response": argument
+                    }
+                },
+            }
+        else:
+            return {"risk_debate_state": new_risk_debate_state}
 
     return safe_node

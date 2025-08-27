@@ -5,7 +5,19 @@ import json
 
 def create_bull_researcher_ask(llm, memory):
     def bull_researcher_ask_node(state) -> dict:
-        investment_debate_state = state["investment_debate_state"]
+        # Handle both single ticker and multi-ticker portfolio modes
+        if "investment_debate_states" in state and state.get("tickers"):
+            # Multi-ticker portfolio mode - use the first ticker for now
+            # In a real implementation, you might want to track which ticker is currently being debated
+            ticker = state["tickers"][0] if state["tickers"] else "SPY"
+            investment_debate_state = state["investment_debate_states"].get(ticker, {})
+            is_portfolio_mode = True
+        else:
+            # Single ticker mode
+            investment_debate_state = state.get("investment_debate_state", {})
+            ticker = None
+            is_portfolio_mode = False
+        
         bear_response = investment_debate_state.get("current_response", "")
         bull_history = investment_debate_state.get("bull_history", "[]")
 
@@ -58,9 +70,19 @@ The content of the questions should be detailed and evidence-based. Source indic
             "bull_history": new_bull_history,
             "bear_history": investment_debate_state.get("bear_history", "[]"),
             "current_response": crossex_json,
-            "count": investment_debate_state["count"] + 1,
+            "count": investment_debate_state.get("count", 0) + 1,
         }
 
-        return {"investment_debate_state": new_investment_debate_state}
+        # Return the appropriate state structure based on mode
+        if is_portfolio_mode:
+            # In portfolio mode, update the ticker-specific state
+            return {
+                "investment_debate_states": {
+                    ticker: new_investment_debate_state
+                }
+            }
+        else:
+            # Single ticker mode - use the existing logic
+            return {"investment_debate_state": new_investment_debate_state}
 
     return bull_researcher_ask_node

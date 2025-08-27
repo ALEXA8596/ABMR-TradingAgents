@@ -1069,6 +1069,360 @@ class BlackboardAgent:
         
         return messages
     
+    def get_portfolio_analyses(self, tickers: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """
+        Get portfolio analysis messages from the blackboard.
+        
+        Args:
+            tickers: Optional list of tickers to filter by
+            
+        Returns:
+            List of portfolio analysis messages
+        """
+        filters = {"type": "PortfolioAnalysis"}
+        messages = read_messages(filters)
+        
+        if tickers:
+            # Filter messages that contain any of the specified tickers
+            filtered_messages = []
+            for msg in messages:
+                msg_tickers = msg.get("content", {}).get("tickers", [])
+                if any(ticker in msg_tickers for ticker in tickers):
+                    filtered_messages.append(msg)
+            messages = filtered_messages
+        
+        return messages
+    
+    def get_cross_ticker_correlations(self, tickers: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """
+        Get cross-ticker correlation messages from the blackboard.
+        
+        Args:
+            tickers: Optional list of tickers to filter by
+            
+        Returns:
+            List of cross-ticker correlation messages
+        """
+        filters = {"type": "CrossTickerCorrelation"}
+        messages = read_messages(filters)
+        
+        if tickers:
+            # Filter messages that contain any of the specified tickers
+            filtered_messages = []
+            for msg in messages:
+                msg_tickers = msg.get("content", {}).get("tickers", [])
+                if any(ticker in msg_tickers for ticker in tickers):
+                    filtered_messages.append(msg)
+            messages = filtered_messages
+        
+        return messages
+    
+    def get_portfolio_balances(self, tickers: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """
+        Get portfolio balance messages from the blackboard.
+        
+        Args:
+            tickers: Optional list of tickers to filter by
+            
+        Returns:
+            List of portfolio balance messages
+        """
+        filters = {"type": "PortfolioBalance"}
+        messages = read_messages(filters)
+        
+        if tickers:
+            # Filter messages that contain any of the specified tickers
+            filtered_messages = []
+            for msg in messages:
+                msg_tickers = msg.get("content", {}).get("tickers", [])
+                if any(ticker in msg_tickers for ticker in tickers):
+                    filtered_messages.append(msg)
+            messages = filtered_messages
+        
+        return messages
+    
+    def get_sector_analyses(self, tickers: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """
+        Get sector analysis messages from the blackboard.
+        
+        Args:
+            tickers: Optional list of tickers to filter by
+            
+        Returns:
+            List of sector analysis messages
+        """
+        filters = {"type": "SectorAnalysis"}
+        messages = read_messages(filters)
+        
+        if tickers:
+            # Filter messages that contain any of the specified tickers
+            filtered_messages = []
+            for msg in messages:
+                msg_tickers = msg.get("content", {}).get("tickers", [])
+                if any(ticker in msg_tickers for ticker in tickers):
+                    filtered_messages.append(msg)
+            messages = filtered_messages
+        
+        return messages
+    
+    def get_portfolio_risk_assessments(self, tickers: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """
+        Get portfolio risk assessment messages from the blackboard.
+        
+        Args:
+            tickers: Optional list of tickers to filter by
+            
+        Returns:
+            List of portfolio risk assessment messages
+        """
+        filters = {"type": "PortfolioRiskAssessment"}
+        messages = read_messages(filters)
+        
+        if tickers:
+            # Filter messages that contain any of the specified tickers
+            filtered_messages = []
+            for msg in messages:
+                msg_tickers = msg.get("content", {}).get("tickers", [])
+                if any(ticker in msg_tickers for ticker in tickers):
+                    filtered_messages.append(msg)
+            messages = filtered_messages
+        
+        return messages
+    
+    def get_portfolio_optimizations(self, tickers: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """
+        Get portfolio optimization messages from the blackboard.
+        
+        Args:
+            tickers: Optional list of tickers to filter by
+            
+        Returns:
+            List of portfolio optimization messages
+        """
+        filters = {"type": "PortfolioOptimization"}
+        messages = read_messages(filters)
+        
+        if tickers:
+            # Filter messages that contain any of the specified tickers
+            filtered_messages = []
+            for msg in messages:
+                msg_tickers = msg.get("content", {}).get("tickers", [])
+                if any(ticker in msg_tickers for ticker in tickers):
+                    filtered_messages.append(msg)
+            messages = filtered_messages
+        
+        return messages
+    
+    def post_portfolio_analysis(self, tickers: List[str], analysis: Dict[str, Any], 
+                               confidence: str = "Medium", target: Optional[Dict[str, str]] = None) -> str:
+        """
+        Post a portfolio-level analysis to the blackboard.
+        
+        Args:
+            tickers: List of stock ticker symbols in the portfolio
+            analysis: Portfolio analysis content
+            confidence: Confidence level (Low, Medium, High)
+            target: Optional target recipient
+            
+        Returns:
+            Message ID of the posted message
+        """
+        content = {
+            "tickers": tickers,
+            "analysis": analysis,
+            "confidence": confidence
+        }
+        
+        message = BlackboardMessage(
+            message_id=str(uuid.uuid4()),
+            sender=self.sender,
+            intent="Inform",
+            type="PortfolioAnalysis",
+            target=target,
+            timestamp=datetime.utcnow(),
+            content=content
+        )
+        
+        write_message(message.model_dump())
+        return message.message_id
+    
+    def post_cross_ticker_correlation(self, tickers: List[str], correlation_matrix: Dict[str, Dict[str, float]], 
+                                    analysis: str, target: Optional[Dict[str, str]] = None) -> str:
+        """
+        Post cross-ticker correlation analysis to the blackboard.
+        
+        Args:
+            tickers: List of stock ticker symbols
+            correlation_matrix: Correlation matrix between tickers
+            analysis: Analysis of the correlations
+            target: Optional target recipient
+            
+        Returns:
+            Message ID of the posted message
+        """
+        content = {
+            "tickers": tickers,
+            "correlation_matrix": correlation_matrix,
+            "analysis": analysis
+        }
+        
+        message = BlackboardMessage(
+            message_id=str(uuid.uuid4()),
+            sender=self.sender,
+            intent="Inform",
+            type="CrossTickerCorrelation",
+            target=target,
+            timestamp=datetime.utcnow(),
+            content=content
+        )
+        
+        write_message(message.model_dump())
+        return message.message_id
+    
+    def post_portfolio_balance(self, tickers: List[str], allocations: Dict[str, float], 
+                              reasoning: str, risk_metrics: Dict[str, Any],
+                              target: Optional[Dict[str, str]] = None) -> str:
+        """
+        Post portfolio balance recommendations to the blackboard.
+        
+        Args:
+            tickers: List of stock ticker symbols
+            allocations: Recommended allocation percentages for each ticker
+            reasoning: Reasoning for the allocation
+            risk_metrics: Portfolio risk metrics
+            target: Optional target recipient
+            
+        Returns:
+            Message ID of the posted message
+        """
+        content = {
+            "tickers": tickers,
+            "allocations": allocations,
+            "reasoning": reasoning,
+            "risk_metrics": risk_metrics
+        }
+        
+        message = BlackboardMessage(
+            message_id=str(uuid.uuid4()),
+            sender=self.sender,
+            intent="Propose",
+            type="PortfolioBalance",
+            target=target,
+            timestamp=datetime.utcnow(),
+            content=content
+        )
+        
+        write_message(message.model_dump())
+        return message.message_id
+    
+    def post_sector_analysis(self, tickers: List[str], sector_breakdown: Dict[str, List[str]], 
+                            sector_analysis: Dict[str, str], recommendations: str,
+                            target: Optional[Dict[str, str]] = None) -> str:
+        """
+        Post sector analysis across multiple tickers to the blackboard.
+        
+        Args:
+            tickers: List of stock ticker symbols
+            sector_breakdown: Mapping of sectors to tickers
+            sector_analysis: Analysis for each sector
+            recommendations: Sector-based recommendations
+            target: Optional target recipient
+            
+        Returns:
+            Message ID of the posted message
+        """
+        content = {
+            "tickers": tickers,
+            "sector_breakdown": sector_breakdown,
+            "sector_analysis": sector_analysis,
+            "recommendations": recommendations
+        }
+        
+        message = BlackboardMessage(
+            message_id=str(uuid.uuid4()),
+            sender=self.sender,
+            intent="Inform",
+            type="SectorAnalysis",
+            target=target,
+            timestamp=datetime.utcnow(),
+            content=content
+        )
+        
+        write_message(message.model_dump())
+        return message.message_id
+    
+    def post_portfolio_risk_assessment(self, tickers: List[str], risk_factors: List[str], 
+                                     risk_level: str, recommendations: str,
+                                     target: Optional[Dict[str, str]] = None) -> str:
+        """
+        Post portfolio-level risk assessment to the blackboard.
+        
+        Args:
+            tickers: List of stock ticker symbols
+            risk_factors: List of portfolio risk factors
+            risk_level: Overall portfolio risk level
+            recommendations: Risk management recommendations
+            target: Optional target recipient
+            
+        Returns:
+            Message ID of the posted message
+        """
+        content = {
+            "tickers": tickers,
+            "risk_factors": risk_factors,
+            "risk_level": risk_level,
+            "recommendations": recommendations
+        }
+        
+        message = BlackboardMessage(
+            message_id=str(uuid.uuid4()),
+            sender=self.sender,
+            intent="Inform",
+            type="PortfolioRiskAssessment",
+            target=target,
+            timestamp=datetime.utcnow(),
+            content=content
+        )
+        
+        write_message(message.model_dump())
+        return message.message_id
+    
+    def post_portfolio_optimization(self, tickers: List[str], optimization_results: Dict[str, Any], 
+                                  strategy: str, confidence: str = "Medium",
+                                  target: Optional[Dict[str, str]] = None) -> str:
+        """
+        Post portfolio optimization results to the blackboard.
+        
+        Args:
+            tickers: List of stock ticker symbols
+            optimization_results: Results from portfolio optimization algorithms
+            strategy: Optimization strategy used
+            confidence: Confidence level (Low, Medium, High)
+            target: Optional target recipient
+            
+        Returns:
+            Message ID of the posted message
+        """
+        content = {
+            "tickers": tickers,
+            "optimization_results": optimization_results,
+            "strategy": strategy,
+            "confidence": confidence
+        }
+        
+        message = BlackboardMessage(
+            message_id=str(uuid.uuid4()),
+            sender=self.sender,
+            intent="Propose",
+            type="PortfolioOptimization",
+            target=target,
+            timestamp=datetime.utcnow(),
+            content=content
+        )
+        
+        write_message(message.model_dump())
+        return message.message_id
+    
     def get_comprehensive_trade_context(self, ticker: str) -> Dict[str, Any]:
         """
         Get comprehensive trade context for a ticker from all agents.
@@ -1089,6 +1443,40 @@ class BlackboardAgent:
             "trade_executions": self.get_trade_executions(ticker=ticker),
             "portfolio_updates": self.get_portfolio_updates(ticker=ticker)
         }
+        
+        return context
+    
+    def get_comprehensive_portfolio_context(self, tickers: List[str]) -> Dict[str, Any]:
+        """
+        Get comprehensive portfolio context for multiple tickers from all agents.
+        
+        Args:
+            tickers: List of stock ticker symbols
+            
+        Returns:
+            Dictionary containing all relevant context for portfolio decisions
+        """
+        context = {
+            "portfolio_analyses": self.get_portfolio_analyses(tickers=tickers),
+            "cross_ticker_correlations": self.get_cross_ticker_correlations(tickers=tickers),
+            "portfolio_balances": self.get_portfolio_balances(tickers=tickers),
+            "sector_analyses": self.get_sector_analyses(tickers=tickers),
+            "portfolio_risk_assessments": self.get_portfolio_risk_assessments(tickers=tickers),
+            "portfolio_optimizations": self.get_portfolio_optimizations(tickers=tickers),
+            "individual_analyses": {},
+            "individual_risk_assessments": {},
+            "individual_trade_decisions": {}
+        }
+        
+        # Get individual ticker context for each ticker
+        for ticker in tickers:
+            context["individual_analyses"][ticker] = {
+                "analyst_reports": self.get_analysis_reports(ticker=ticker),
+                "risk_assessments": self.get_risk_assessments(ticker=ticker),
+                "trade_decisions": self.get_trade_decisions(ticker=ticker),
+                "research_debates": self.get_debate_comments(topic=f"{ticker} Investment Debate"),
+                "risk_debates": self.get_risk_debate_comments(topic=f"{ticker} Risk Debate")
+            }
         
         return context
     

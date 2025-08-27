@@ -33,6 +33,61 @@ def get_ticker() -> str:
     return ticker.strip().upper()
 
 
+def get_multiple_tickers() -> List[str]:
+    """Prompt the user to enter multiple ticker symbols."""
+    tickers_input = questionary.text(
+        "Enter ticker symbols separated by commas (e.g., AAPL,MSFT,GOOGL):",
+        validate=lambda x: len(x.strip()) > 0 or "Please enter at least one ticker symbol.",
+        style=questionary.Style(
+            [
+                ("text", "fg:green"),
+                ("highlighted", "noinherit"),
+            ]
+        ),
+    ).ask()
+
+    if not tickers_input:
+        console.print("\n[red]No ticker symbols provided. Exiting...[/red]")
+        exit(1)
+
+    # Parse comma-separated tickers
+    tickers = [ticker.strip().upper() for ticker in tickers_input.split(",") if ticker.strip()]
+    
+    if not tickers:
+        console.print("\n[red]No valid ticker symbols found. Exiting...[/red]")
+        exit(1)
+    
+    # Validate tickers (basic validation)
+    for ticker in tickers:
+        if not ticker.isalpha() or len(ticker) > 5:
+            console.print(f"\n[yellow]Warning: {ticker} may not be a valid ticker symbol.[/yellow]")
+    
+    return tickers
+
+
+def select_analysis_mode() -> str:
+    """Select between single ticker and multi-ticker portfolio analysis."""
+    mode = questionary.select(
+        "Select analysis mode:",
+        choices=[
+            questionary.Choice("Single Ticker Analysis", value="single"),
+            questionary.Choice("Multi-Ticker Portfolio Analysis", value="portfolio")
+        ],
+        style=questionary.Style(
+            [
+                ("highlighted", "fg:green"),
+                ("pointer", "fg:green"),
+            ]
+        ),
+    ).ask()
+
+    if not mode:
+        console.print("\n[red]No analysis mode selected. Exiting...[/red]")
+        exit(1)
+
+    return mode
+
+
 def get_analysis_date() -> str:
     """Prompt the user to enter a date in YYYY-MM-DD format."""
     import re

@@ -46,6 +46,66 @@ class Propagator:
             "news_report": "",
         }
 
+    def create_portfolio_state(
+        self, tickers: list, trade_date: str
+    ) -> Dict[str, Any]:
+        """Create enhanced portfolio state for true multi-ticker analysis."""
+        return {
+            "messages": [("human", f"Portfolio analysis for: {', '.join(tickers)}")],
+            "tickers": tickers,
+            "trade_date": str(trade_date),
+            "current_ticker_index": 0,  # Track which ticker we're processing
+            "ticker_analysis_complete": {ticker: False for ticker in tickers},
+            "portfolio_analysis_state": {
+                "individual_analyses": {},
+                "cross_ticker_correlations": {},
+                "sector_analysis": {},
+                "portfolio_risk_assessment": {},
+                "portfolio_optimization": {},
+                "portfolio_balance": {},
+                "correlation_matrix": {},
+                "sector_allocations": {},
+                "risk_metrics": {}
+            },
+            "investment_debate_states": {
+                ticker: {
+                    "history": "[]",
+                    "current_response": "",
+                    "judge_decision": "",
+                    "bull_history": "[]",
+                    "bear_history": "[]",
+                    "count": 0
+                } for ticker in tickers
+            },
+            "risk_debate_states": {
+                ticker: {
+                    "history": "[]",
+                    "current_risky_response": "",
+                    "current_safe_response": "",
+                    "current_neutral_response": "",
+                    "latest_speaker": "",
+                    "judge_decision": "",
+                    "count": 0,
+                } for ticker in tickers
+            },
+            "individual_reports": {
+                ticker: {
+                    "market_report": "",
+                    "fundamentals_report": "",
+                    "sentiment_report": "",
+                    "news_report": "",
+                    "investment_plan": "",
+                    "trader_investment_plan": "",
+                    "final_trade_decision": "",
+                    "analysis_complete": False
+                } for ticker in tickers
+            },
+            "portfolio_optimizer_decision": "",
+            "cross_ticker_correlations": {},
+            "sector_allocations": {},
+            "risk_metrics": {}
+        }
+
     def get_graph_args(self) -> Dict[str, Any]:
         """Get arguments for the graph invocation."""
         return {

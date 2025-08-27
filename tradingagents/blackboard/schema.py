@@ -39,6 +39,14 @@ TRADE_ACTION_BUY = "BUY"
 TRADE_ACTION_SELL = "SELL"
 TRADE_ACTION_HOLD = "HOLD"
 
+# Multi-ticker portfolio message types
+PORTFOLIO_ANALYSIS = "PortfolioAnalysis"
+CROSS_TICKER_CORRELATION = "CrossTickerCorrelation"
+PORTFOLIO_BALANCE = "PortfolioBalance"
+SECTOR_ANALYSIS = "SectorAnalysis"
+PORTFOLIO_RISK_ASSESSMENT = "PortfolioRiskAssessment"
+PORTFOLIO_OPTIMIZATION = "PortfolioOptimization"
+
 
 class BlackboardMessage(BaseModel):
     """

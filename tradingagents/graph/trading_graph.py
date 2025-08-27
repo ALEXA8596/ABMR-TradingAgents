@@ -256,6 +256,49 @@ class TradingAgentsGraph:
         
         return final_state, final_decision
 
+    def propagate_portfolio(self, tickers: List[str], date: str) -> Tuple[Dict[str, Any], str]:
+        """
+        Propagate through the trading agents graph for multiple tickers with portfolio optimization.
+        
+        Args:
+            tickers: List of stock ticker symbols
+            date: Analysis date
+            
+        Returns:
+            Tuple of (final_state, final_decision)
+        """
+        if self.debug:
+            print(f"🚀 Starting portfolio propagation for {len(tickers)} tickers: {', '.join(tickers)} on {date}")
+            print(f"📊 Using blackboard system for multi-ticker portfolio coordination")
+        
+        # Store tickers for blackboard context
+        self.tickers = tickers
+        
+        # Initialize portfolio state
+        init_portfolio_state = self.propagator.create_portfolio_state(tickers, date)
+        args = self.propagator.get_graph_args()
+        
+        # Stream the analysis with portfolio blackboard integration
+        trace = []
+        for chunk in self.graph.stream(init_portfolio_state, **args):
+            if len(chunk["messages"]) > 0:
+                # Process messages and update portfolio blackboard
+                self._process_chunk_for_portfolio_blackboard(chunk, tickers)
+                if self.debug:
+                    chunk["messages"][-1].pretty_print()
+            
+            trace.append(chunk)
+        
+        # Get final state and portfolio decision
+        final_state = trace[-1] if trace else init_portfolio_state
+        final_portfolio_decision = self._extract_final_portfolio_decision(final_state)
+        
+        if self.debug:
+            print(f"✅ Portfolio propagation completed for {len(tickers)} tickers")
+            print(f"📋 Final portfolio decision: {final_portfolio_decision}")
+        
+        return final_state, final_portfolio_decision
+
     def _process_chunk_for_blackboard(self, chunk: Dict[str, Any], ticker: str):
         """Process a chunk of the graph execution and update blackboard accordingly."""
         # This method would process the chunk and ensure relevant information
@@ -272,11 +315,34 @@ class TradingAgentsGraph:
         
         # Add more chunk processing logic as needed
 
+    def _process_chunk_for_portfolio_blackboard(self, chunk: Dict[str, Any], tickers: List[str]):
+        """Process a chunk of the graph execution and update portfolio blackboard accordingly."""
+        # This method would process the chunk and ensure relevant information
+        # is posted to the blackboard for other agents to access
+        # Implementation depends on your specific chunk structure
+        
+        # Example: If chunk contains portfolio reports, post them to blackboard
+        if "portfolio_report" in chunk and chunk["portfolio_report"]:
+            for ticker in tickers:
+                self.blackboard_agents["trader"].post_portfolio_report(
+                    ticker=ticker,
+                    analysis={"report": chunk["portfolio_report"]},
+                    confidence="Medium"
+                )
+        
+        # Add more chunk processing logic as needed
+
     def _extract_final_decision(self, final_state: Dict[str, Any]) -> str:
         """Extract the final trading decision from the state."""
         # Implementation depends on your state structure
         # This is a placeholder - implement based on your actual state format
         return final_state.get("trader_investment_plan", "No decision made")
+
+    def _extract_final_portfolio_decision(self, final_state: Dict[str, Any]) -> str:
+        """Extract the final portfolio decision from the state."""
+        # Implementation depends on your state structure
+        # This is a placeholder - implement based on your actual state format
+        return final_state.get("portfolio_optimizer_decision", "No decision made")
 
     def get_blackboard_context(self, ticker: str) -> Dict[str, Any]:
         """
@@ -289,6 +355,18 @@ class TradingAgentsGraph:
             Dictionary containing all relevant context from the blackboard
         """
         return self.blackboard_agents["trader"].get_comprehensive_trade_context(ticker)
+
+    def get_portfolio_blackboard_context(self, tickers: List[str]) -> Dict[str, Any]:
+        """
+        Get comprehensive portfolio blackboard context for multiple tickers.
+        
+        Args:
+            tickers: List of stock ticker symbols
+            
+        Returns:
+            Dictionary containing all relevant portfolio context from the blackboard
+        """
+        return self.blackboard_agents["trader"].get_comprehensive_portfolio_context(tickers)
 
     def get_blackboard_stats(self) -> Dict[str, Any]:
         """

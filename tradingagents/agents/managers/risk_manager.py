@@ -7,16 +7,51 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 def create_risk_manager(llm, memory, toolkit):
     def risk_manager_node(state) -> dict:
 
-        ticker = state["company_of_interest"]
-        current_date = state["trade_date"]
-
-        history = state["risk_debate_state"]["history"]
-        risk_debate_state = state["risk_debate_state"]
-        market_research_report = state["market_report"]
-        news_report = state["news_report"]
-        fundamentals_report = state["news_report"]
-        sentiment_report = state["sentiment_report"]
-        trader_plan = state["investment_plan"]
+        # Handle both single ticker and multi-ticker portfolio modes
+        if "tickers" in state and state.get("tickers"):
+            # Multi-ticker portfolio mode - use the first ticker for now
+            ticker = state["tickers"][0] if state["tickers"] else "SPY"
+            is_portfolio_mode = True
+            
+            # Extract ticker-specific data from portfolio structure
+            individual_reports = state.get("individual_reports", {})
+            ticker_reports = individual_reports.get(ticker, {})
+            
+            current_date = state["trade_date"]
+            
+            # Extract ticker-specific debate states from portfolio structure
+            risk_debate_states = state.get("risk_debate_states", {})
+            risk_debate_state = risk_debate_states.get(ticker, {})
+            
+            investment_debate_states = state.get("investment_debate_states", {})
+            investment_debate_state = investment_debate_states.get(ticker, {})
+            
+            history = risk_debate_state.get("history", "[]")
+            market_research_report = ticker_reports.get("market_report", "")
+            news_report = ticker_reports.get("news_report", "")
+            fundamentals_report = ticker_reports.get("fundamentals_report", "")
+            sentiment_report = ticker_reports.get("sentiment_report", "")
+            trader_plan = ticker_reports.get("investment_plan", "")
+            
+        elif "company_of_interest" in state:
+            # Single ticker mode (backward compatibility)
+            ticker = state["company_of_interest"]
+            is_portfolio_mode = False
+            
+            current_date = state["trade_date"]
+            history = state["risk_debate_state"]["history"]
+            risk_debate_state = state["risk_debate_state"]
+            market_research_report = state.get("market_report", "")
+            news_report = state.get("news_report", "")
+            fundamentals_report = state.get("fundamentals_report", "")
+            sentiment_report = state.get("sentiment_report", "")
+            trader_plan = state.get("investment_plan", "")
+        else:
+            # Fallback - this shouldn't happen but let's handle it gracefully
+            print("Warning: No ticker information found in state")
+            return {
+                "final_trade_decision": "Error: No ticker information available",
+            }
 
         # Enterprise policy: Risk Judge recommends only; execution happens in Portfolio Optimizer.
 
@@ -157,10 +192,23 @@ Do not execute any trades or call tools. Produce a clear BUY/SELL/HOLD recommend
         }
 
         # store serializable message content instead of the full chain result object
-        return {
-            "messages": state.get("messages", []) + [{"role": "assistant", "content": response_text}],
-            "risk_debate_state": new_risk_debate_state,
-            "final_trade_decision": response_text,
-        }
+        if is_portfolio_mode:
+            return {
+                "messages": state.get("messages", []) + [{"role": "assistant", "content": response_text}],
+                "risk_debate_states": {
+                    ticker: new_risk_debate_state
+                },
+                "individual_reports": {
+                    ticker: {
+                        "final_trade_decision": response_text
+                    }
+                },
+            }
+        else:
+            return {
+                "messages": state.get("messages", []) + [{"role": "assistant", "content": response_text}],
+                "risk_debate_state": new_risk_debate_state,
+                "final_trade_decision": response_text,
+            }
 
     return risk_manager_node

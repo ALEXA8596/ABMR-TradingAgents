@@ -16,7 +16,23 @@ def create_quant_options_manager(llm, memory, toolkit):
         - Logs artifacts under results_dir/<ticker>/<date>/reports.
         """
 
-        ticker = state["company_of_interest"]
+        # Handle both single ticker and multi-ticker portfolio modes
+        if "tickers" in state and state.get("tickers"):
+            # Multi-ticker portfolio mode - use the first ticker for now
+            ticker = state["tickers"][0] if state["tickers"] else "SPY"
+            is_portfolio_mode = True
+        elif "company_of_interest" in state:
+            # Single ticker mode (backward compatibility)
+            ticker = state["company_of_interest"]
+            is_portfolio_mode = False
+        else:
+            # Fallback - this shouldn't happen but let's handle it gracefully
+            print("Warning: No ticker information found in state")
+            return {
+                "quant_strategies": {},
+                "quant_options_report_file": None,
+            }
+
         trade_date = state.get("trade_date", datetime.now().strftime("%Y-%m-%d"))
 
         # Blackboard integration

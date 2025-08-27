@@ -7,7 +7,26 @@ from tradingagents.blackboard.utils import create_agent_blackboard
 def create_fundamentals_analyst(llm, toolkit):
     def fundamentals_analyst_node(state):
         current_date = state["trade_date"]
-        ticker = state["company_of_interest"]
+        
+        # Handle both single ticker and multi-ticker modes
+        if "tickers" in state:
+            # Multi-ticker portfolio mode
+            tickers = state["tickers"]
+            ticker = tickers[0]  # Analyze first ticker for now
+            company_name = ticker
+            is_portfolio_mode = True
+        elif "company_of_interest" in state:
+            # Single ticker mode (backward compatibility)
+            ticker = state["company_of_interest"]
+            company_name = state["company_of_interest"]
+            is_portfolio_mode = False
+        else:
+            # Fallback - this shouldn't happen but let's handle it gracefully
+            print("Warning: No ticker information found in state")
+            return {
+                "messages": [],
+                "fundamentals_report": "Error: No ticker information available",
+            }
 
         # Blackboard integration
         blackboard_agent = create_agent_blackboard("FA_001", "FundamentalAnalyst")
@@ -107,9 +126,24 @@ def create_fundamentals_analyst(llm, toolkit):
             confidence=confidence
         )
 
-        return {
-            "messages": [result],
-            "fundamentals_report": report,
-        }
+        # Handle portfolio mode by updating individual reports
+        if is_portfolio_mode:
+            # Update the individual reports for the ticker being analyzed
+            if "individual_reports" in state:
+                # Always mark the ticker as complete to prevent infinite loops
+                state["individual_reports"][ticker]["fundamentals_report"] = report
+            
+            return {
+                "messages": [result],
+                "fundamentals_report": report,
+                "individual_reports": state.get("individual_reports", {}),
+                "current_ticker_index": state.get("current_ticker_index", 0)
+            }
+        else:
+            # Single ticker mode
+            return {
+                "messages": [result],
+                "fundamentals_report": report,
+            }
 
     return fundamentals_analyst_node

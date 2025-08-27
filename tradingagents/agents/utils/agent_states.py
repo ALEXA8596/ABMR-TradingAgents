@@ -1,6 +1,6 @@
-from typing import Annotated, Sequence
+from typing import Annotated, Sequence, Optional
 from datetime import date, timedelta, datetime
-from typing_extensions import TypedDict, Optional
+from typing_extensions import TypedDict
 from langchain_openai import ChatOpenAI
 from tradingagents.agents import *
 from langgraph.prebuilt import ToolNode
@@ -59,8 +59,19 @@ class PortfolioOptimizationState(TypedDict):
 
 
 class AgentState(MessagesState):
-    company_of_interest: Annotated[str, "Company that we are interested in trading"]
+    # Single ticker mode fields (backward compatibility)
+    company_of_interest: Annotated[Optional[str], "Company that we are interested in trading"]
     trade_date: Annotated[str, "What date we are trading at"]
+
+    # Portfolio mode fields
+    tickers: Annotated[Optional[list], "List of ticker symbols for portfolio analysis"]
+    individual_reports: Annotated[Optional[dict], "Individual analysis reports for each ticker"]
+    portfolio_analysis_state: Annotated[Optional[dict], "Portfolio-level analysis state"]
+    investment_debate_states: Annotated[Optional[dict], "Investment debate states for each ticker"]
+    risk_debate_states: Annotated[Optional[dict], "Risk debate states for each ticker"]
+    portfolio_optimizer_decision: Annotated[Optional[str], "Portfolio optimizer decision"]
+    portfolio_balance: Annotated[Optional[dict], "Portfolio balance information"]
+    cross_ticker_correlations: Annotated[Optional[dict], "Cross-ticker correlation analysis"]
 
     sender: Annotated[str, "Agent that sent this message"]
 

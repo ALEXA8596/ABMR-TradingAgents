@@ -7,16 +7,55 @@ from tradingagents.agents.utils.debate_utils import increment_debate_count, get_
 
 def create_bull_researcher(llm, memory):
     def bull_node(state) -> dict:
-        ticker = state["company_of_interest"]
-        investment_debate_state = state["investment_debate_state"]
+        # Handle both single ticker and portfolio modes
+        if "tickers" in state:
+            # Multi-ticker portfolio mode
+            tickers = state["tickers"]
+            ticker = tickers[0]  # Analyze first ticker for now
+            is_portfolio_mode = True
+            
+            # Extract ticker-specific debate state from portfolio structure
+            investment_debate_states = state.get("investment_debate_states", {})
+            investment_debate_state = investment_debate_states.get(ticker, {})
+            
+            # Also extract ticker-specific risk debate state
+            risk_debate_states = state.get("risk_debate_states", {})
+            risk_debate_state = risk_debate_states.get(ticker, {})
+            
+        elif "company_of_interest" in state:
+            # Single ticker mode (backward compatibility)
+            ticker = state["company_of_interest"]
+            is_portfolio_mode = False
+            
+            # Use single ticker debate states
+            investment_debate_state = state.get("investment_debate_state", {})
+            risk_debate_state = state.get("risk_debate_state", {})
+        else:
+            # Fallback - this shouldn't happen but let's handle it gracefully
+            print("Warning: No ticker information found in state")
+            return {
+                "investment_plan": "Error: No ticker information available",
+            }
+
+        # Now we have the correct debate state for the current ticker
         history = investment_debate_state.get("history", "")
         bull_history = investment_debate_state.get("bull_history", "")
 
         current_response = investment_debate_state.get("current_response", "")
-        market_research_report = state["market_report"]
-        sentiment_report = state["sentiment_report"]
-        news_report = state["news_report"]
-        fundamentals_report = state["fundamentals_report"]
+        
+        # Extract reports based on mode
+        if is_portfolio_mode:
+            individual_reports = state.get("individual_reports", {})
+            ticker_reports = individual_reports.get(ticker, {})
+            market_research_report = ticker_reports.get("market_report", "")
+            sentiment_report = ticker_reports.get("sentiment_report", "")
+            news_report = ticker_reports.get("news_report", "")
+            fundamentals_report = ticker_reports.get("fundamentals_report", "")
+        else:
+            market_research_report = state.get("market_report", "")
+            sentiment_report = state.get("sentiment_report", "")
+            news_report = state.get("news_report", "")
+            fundamentals_report = state.get("fundamentals_report", "")
 
         # Blackboard integration
         blackboard_agent = create_agent_blackboard("BR_001", "BullResearcher")
@@ -33,7 +72,7 @@ def create_bull_researcher(llm, memory):
                     blackboard_context += f"- {analysis['sender'].get('role', 'Unknown')}: {analysis_data.get('recommendation', 'N/A')} (Confidence: {analysis_data.get('confidence', 'N/A')})\n"
 
         # Read full debate context for multi-round debates
-        debate_round = investment_debate_state["count"] + 1
+        debate_round = investment_debate_state.get("count", 0) + 1
         recent_debate = blackboard_agent.get_debate_comments(topic=f"{ticker} Investment Debate")
         debate_context = ""
         if recent_debate:
@@ -177,7 +216,7 @@ Respond in the following JSON format:
         argument = f"Bull Analyst: {response.content}"
 
         # Get current debate round information
-        round_info = get_debate_round_info(state)
+        round_info = get_debate_round_info(state, ticker)
         current_round = round_info["round"]
         current_step = round_info["step_name"]
         
@@ -202,12 +241,23 @@ Respond in the following JSON format:
             "bear_history": investment_debate_state.get("bear_history", "[]"),
             "current_response": argument,
             "judge_decision": investment_debate_state.get("judge_decision", ""),
-            "count": investment_debate_state["count"],  # Keep current count
+            "count": investment_debate_state.get("count", 0),  # Keep current count
         }
 
         # Increment the count for the next step
-        updated_state = {"investment_debate_state": new_investment_debate_state}
-        updated_state = increment_debate_count(updated_state)
+        if is_portfolio_mode:
+            # In portfolio mode, update the ticker-specific state
+            updated_state = {
+                "investment_debate_states": {
+                    ticker: new_investment_debate_state
+                }
+            }
+            # Increment the count manually since increment_debate_count expects single ticker mode
+            updated_state["investment_debate_states"][ticker]["count"] = new_investment_debate_state["count"] + 1
+        else:
+            # Single ticker mode - use the existing logic
+            updated_state = {"investment_debate_state": new_investment_debate_state}
+            updated_state = increment_debate_count(updated_state)
         
         # Return the complete state update
         return updated_state

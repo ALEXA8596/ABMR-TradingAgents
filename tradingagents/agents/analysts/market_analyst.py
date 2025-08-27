@@ -8,8 +8,26 @@ def create_market_analyst(llm, toolkit):
 
     def market_analyst_node(state):
         current_date = state["trade_date"]
-        ticker = state["company_of_interest"]
-        company_name = state["company_of_interest"]
+        
+        # Handle both single ticker and multi-ticker modes
+        if "tickers" in state:
+            # Multi-ticker portfolio mode
+            tickers = state["tickers"]
+            ticker = tickers[0]  # Analyze first ticker for now
+            company_name = ticker
+            is_portfolio_mode = True
+        elif "company_of_interest" in state:
+            # Single ticker mode (backward compatibility)
+            ticker = state["company_of_interest"]
+            company_name = state["company_of_interest"]
+            is_portfolio_mode = False
+        else:
+            # Fallback - this shouldn't happen but let's handle it gracefully
+            print("Warning: No ticker information found in state")
+            return {
+                "messages": [],
+                "market_report": "Error: No ticker information available",
+            }
 
         # Blackboard integration
         blackboard_agent = create_agent_blackboard("MA_001", "MarketAnalyst")
@@ -201,9 +219,25 @@ Advanced Analysis:
             confidence=confidence
         )
 
-        return {
-            "messages": [result],
-            "market_report": report,
-        }
+        # Handle portfolio mode by updating individual reports
+        if is_portfolio_mode:
+            # Update the individual reports for the ticker being analyzed
+            if "individual_reports" in state:
+                # Always mark the ticker as complete to prevent infinite loops
+                state["individual_reports"][ticker]["market_report"] = report
+                state["individual_reports"][ticker]["analysis_complete"] = True
+            
+            return {
+                "messages": [result],
+                "market_report": report,
+                "individual_reports": state.get("individual_reports", {}),
+                "current_ticker_index": state.get("current_ticker_index", 0)
+            }
+        else:
+            # Single ticker mode
+            return {
+                "messages": [result],
+                "market_report": report,
+            }
 
     return market_analyst_node

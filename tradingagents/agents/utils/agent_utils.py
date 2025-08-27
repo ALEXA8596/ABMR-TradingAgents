@@ -1881,3 +1881,64 @@ class Toolkit:
         except Exception as e:
             return {"error": f"Hedging strategy design failed: {str(e)}", "hedging_strategy": {}}
 
+    @staticmethod
+    @tool
+    def get_volatility(ticker: str) -> str:
+        """Calculate volatility for a ticker."""
+        try:
+            data = interface.get_historical_data(ticker, days=252)
+            if data is None:
+                return f"Error: Unable to get data for {ticker}"
+            
+            returns = data['close'].pct_change().dropna()
+            volatility = returns.std() * (252 ** 0.5)  # Annualized volatility
+            
+            return f"Volatility for {ticker}: {volatility:.4f}"
+        except Exception as e:
+            return f"Error calculating volatility: {str(e)}"
+
+    @staticmethod
+    @tool
+    def calculate_correlation(ticker1: str, ticker2: str) -> str:
+        """Calculate correlation between two tickers."""
+        try:
+            # Get historical data for both tickers
+            data1 = interface.get_historical_data(ticker1, days=252)
+            data2 = interface.get_historical_data(ticker2, days=252)
+            
+            if data1 is None or data2 is None:
+                return f"Error: Unable to get data for {ticker1} or {ticker2}"
+            
+            # Calculate correlation
+            correlation = data1['close'].corr(data2['close'])
+            
+            return f"Correlation between {ticker1} and {ticker2}: {correlation:.4f}"
+        except Exception as e:
+            return f"Error calculating correlation: {str(e)}"
+
+    @staticmethod
+    @tool
+    def get_sector_info(ticker: str) -> str:
+        """Get sector information for a ticker."""
+        try:
+            # This would integrate with a sector database
+            # For now, return basic info based on common knowledge
+            sector_mapping = {
+                "SPY": "ETF - S&P 500",
+                "AAPL": "Technology",
+                "TSLA": "Consumer Discretionary",
+                "MSFT": "Technology",
+                "GOOGL": "Technology",
+                "AMZN": "Consumer Discretionary",
+                "NVDA": "Technology",
+                "META": "Technology",
+                "NFLX": "Communication Services",
+                "JPM": "Financial Services",
+                "JNJ": "Healthcare"
+            }
+            
+            sector = sector_mapping.get(ticker, "Unknown")
+            return f"Sector info for {ticker}: {sector}"
+        except Exception as e:
+            return f"Error getting sector info: {str(e)}"
+

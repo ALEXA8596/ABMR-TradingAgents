@@ -9,12 +9,40 @@ from tradingagents.agents.utils.agent_utils import Toolkit
 def create_trader(llm, memory):
 
     def trader_node(state, name):
-        ticker = state["company_of_interest"]
-        investment_plan = state["investment_plan"]
-        market_research_report = state["market_report"]
-        sentiment_report = state["sentiment_report"]
-        news_report = state["news_report"]
-        fundamentals_report = state["fundamentals_report"]
+        # Handle both single ticker and multi-ticker portfolio modes
+        if "tickers" in state and state.get("tickers"):
+            # Multi-ticker portfolio mode - use the first ticker for now
+            ticker = state["tickers"][0] if state["tickers"] else "SPY"
+            is_portfolio_mode = True
+            
+            # Extract ticker-specific data from portfolio structure
+            individual_reports = state.get("individual_reports", {})
+            ticker_reports = individual_reports.get(ticker, {})
+            
+            investment_plan = ticker_reports.get("investment_plan", "")
+            market_research_report = ticker_reports.get("market_report", "")
+            sentiment_report = ticker_reports.get("sentiment_report", "")
+            news_report = ticker_reports.get("news_report", "")
+            fundamentals_report = ticker_reports.get("fundamentals_report", "")
+            
+        elif "company_of_interest" in state:
+            # Single ticker mode (backward compatibility)
+            ticker = state["company_of_interest"]
+            is_portfolio_mode = False
+            
+            investment_plan = state.get("investment_plan", "")
+            market_research_report = state.get("market_report", "")
+            sentiment_report = state.get("sentiment_report", "")
+            news_report = state.get("news_report", "")
+            fundamentals_report = state.get("fundamentals_report", "")
+        else:
+            # Fallback - this shouldn't happen but let's handle it gracefully
+            print("Warning: No ticker information found in state")
+            return {
+                "messages": [],
+                "trader_investment_plan": "Error: No ticker information available",
+                "sender": name,
+            }
 
         # Blackboard integration
         blackboard_agent = create_agent_blackboard("TR_001", "Trader")
@@ -139,10 +167,22 @@ Consider all the insights from analysts, risk managers, research managers, and c
         exec_result = getattr(result, 'tool_responses', None) or getattr(result, 'tools_called', None) or result.content
         print(f"Trade execution result (from LLM/tools): {exec_result}")
 
-        return {
-            "messages": [result],
-            "trader_investment_plan": result.content,
-            "sender": name,
-        }
+        # Return appropriate structure based on mode
+        if is_portfolio_mode:
+            return {
+                "messages": [result],
+                "individual_reports": {
+                    ticker: {
+                        "trader_investment_plan": result.content
+                    }
+                },
+                "sender": name,
+            }
+        else:
+            return {
+                "messages": [result],
+                "trader_investment_plan": result.content,
+                "sender": name,
+            }
 
     return functools.partial(trader_node, name="Trader")

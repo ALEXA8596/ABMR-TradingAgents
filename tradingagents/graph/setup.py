@@ -8,8 +8,10 @@ from langgraph.prebuilt import ToolNode
 from tradingagents.agents import *
 from tradingagents.agents.utils.agent_states import AgentState
 from tradingagents.agents.utils.agent_utils import Toolkit
+from tradingagents.agents.managers.multi_ticker_portfolio_optimizer import create_multi_ticker_portfolio_optimizer
 
 from .conditional_logic import ConditionalLogic
+from datetime import datetime
 
 
 class GraphSetup:
@@ -97,6 +99,13 @@ class GraphSetup:
             delete_nodes["fundamentals"] = create_msg_delete()
             tool_nodes["fundamentals"] = self.tool_nodes["fundamentals"]
         
+        if "quant_market" in selected_analysts:
+            analyst_nodes["quant_market"] = create_quant_market_analyst(
+                self.quick_thinking_llm, self.toolkit
+            )
+            delete_nodes["quant_market"] = create_msg_delete()
+            tool_nodes["quant_market"] = self.tool_nodes["market"]  # Use same tools as market analyst
+        
         tool_nodes["riskJudge"] = self.tool_nodes["riskJudge"]
         delete_nodes["riskJudge"] = create_msg_delete()
 
@@ -155,6 +164,23 @@ class GraphSetup:
             self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
         )
 
+        # Add multi-ticker portfolio optimizer
+        multi_ticker_portfolio_optimizer_node = create_multi_ticker_portfolio_optimizer(
+            self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
+        )
+        
+        # Add portfolio finalization node (simple pass-through for now)
+        portfolio_finalization_node = lambda state: {
+            "portfolio_finalized": True, 
+            "final_decision": "Multi-ticker portfolio analysis completed",
+            "portfolio_summary": {
+                "tickers_analyzed": state.get("tickers", []),
+                "total_tickers": len(state.get("tickers", [])),
+                "optimization_completed": True,
+                "timestamp": datetime.now().isoformat()
+            }
+        }
+
         # Create workflow
         workflow = StateGraph(AgentState)
 
@@ -186,6 +212,8 @@ class GraphSetup:
         workflow.add_node("tools_Risk Judge", tool_nodes["riskJudge"])
         workflow.add_node("Quant Options Manager", quant_options_manager_node)
         workflow.add_node("Portfolio Optimizer", portfolio_optimizer_node)
+        workflow.add_node("Multi-Ticker Portfolio Optimizer", multi_ticker_portfolio_optimizer_node)
+        workflow.add_node("Portfolio Finalization", portfolio_finalization_node)
 
         # Define edges
         # Start with the first analyst
@@ -321,8 +349,33 @@ class GraphSetup:
         workflow.add_edge(
             "Risk Judge", "Quant Options Manager",
         )
-        workflow.add_edge("Quant Options Manager", "Portfolio Optimizer")
+        
+        # Add conditional routing for portfolio vs single ticker mode
+        workflow.add_conditional_edges(
+            "Quant Options Manager",
+            self.conditional_logic.should_continue_portfolio_flow,
+            {
+                "Portfolio Optimizer": "Portfolio Optimizer",
+                "Multi-Ticker Portfolio Optimizer": "Multi-Ticker Portfolio Optimizer",
+            },
+        )
+        
+        # Single ticker flow - goes directly to END
         workflow.add_edge("Portfolio Optimizer", END)
+        
+        # Multi-ticker portfolio flow - needs to process all tickers before ending
+        workflow.add_conditional_edges(
+            "Multi-Ticker Portfolio Optimizer",
+            self.conditional_logic.should_continue_ticker_analysis,
+            {
+                "next_ticker": "Multi-Ticker Portfolio Optimizer",  # Loop back to continue processing
+                "portfolio_optimization": "Portfolio Finalization",
+                "continue_analysis": "Market Analyst",  # Route back to analysis flow
+            },
+        )
+        
+        # Portfolio finalization leads to END
+        workflow.add_edge("Portfolio Finalization", END)
 
         # Compile and return
         return workflow.compile()
