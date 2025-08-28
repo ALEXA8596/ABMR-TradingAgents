@@ -112,17 +112,23 @@ class ConditionalLogic:
             # Fallback - no debate state found
             count = 0
 
-        # Simplified flow: Bull → Bear → Research Manager
+        # Enhanced flow with crossex: Bull → Bear → Bull Crossex → Bear Crossex → Research Manager
         # 1 => Bull Researcher
-        # 2 => Bear Researcher  
-        # 3+ => Research Manager
+        # 2 => Bear Researcher
+        # 3 => Bull Crossex Researcher (RESTORED)
+        # 4 => Bear Crossex Researcher (RESTORED)  
+        # 5+ => Research Manager (GUARANTEED TERMINATION)
 
         if count == 0:
             return "Bull Researcher"
         elif count == 1:
             return "Bear Researcher"
+        elif count == 2:
+            return "Bull Crossex Researcher"
+        elif count == 3:
+            return "Bear Crossex Researcher"
         else:
-            # After both researchers have spoken, go to Research Manager
+            # After all researchers (including crossex), go to Research Manager
             return "Research Manager"
 
     def should_continue_risk_analysis(self, state: AgentState) -> str:
@@ -144,14 +150,15 @@ class ConditionalLogic:
             
         print(f"[DEBUG] should_continue_risk_analysis: count={count}, max_risk_discuss_rounds={self.max_risk_discuss_rounds}")
         # Check if we've reached the maximum number of rounds
-        if count >= 2 * self.max_risk_discuss_rounds:  # Simplified: 2 analysts instead of 3
+        if count >= 3 * self.max_risk_discuss_rounds:  # Enhanced: 3 analysts (RESTORED neutral)
             print("[DEBUG] Risk analysis complete. Handing off to Risk Judge.")
             return "Risk Judge"
         
-        # Simplified flow: Risky → Safe → Risk Judge
+        # Enhanced flow with neutral: Risky → Safe → Neutral → Risk Judge
         # 1 => Risky Analyst
         # 2 => Safe Analyst
-        # 3+ => Risk Judge
+        # 3 => Neutral Analyst (RESTORED)
+        # 4+ => Risk Judge (GUARANTEED TERMINATION)
 
         if count == 0:
             print("[DEBUG] Next: Risky Analyst")
@@ -159,8 +166,11 @@ class ConditionalLogic:
         elif count == 1:
             print("[DEBUG] Next: Safe Analyst")
             return "Safe Analyst"
+        elif count == 2:
+            print("[DEBUG] Next: Neutral Analyst")
+            return "Neutral Analyst"
         else:
-            # After both analysts have spoken, go to Risk Judge
+            # After all analysts (including neutral), go to Risk Judge
             print("[DEBUG] Next: Risk Judge")
             return "Risk Judge"
 

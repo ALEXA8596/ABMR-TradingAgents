@@ -121,15 +121,21 @@ class GraphSetup:
             self.deep_thinking_llm, self.invest_judge_memory
         )
         
-        # Cross Ex Nodes removed - functionality integrated into core researchers
+        # Cross Ex Nodes - RESTORED per user request
+        bull_crossex_researcher_node = create_bull_crossex_researcher(
+            self.deep_thinking_llm, self.bull_memory
+        )
+        bear_crossex_researcher_node = create_bear_crossex_researcher(
+            self.deep_thinking_llm, self.bear_memory
+        )
         
         trader_node = create_trader(self.quick_thinking_llm, self.trader_memory)
 
         # Create risk analysis nodes
         risky_analyst = create_risky_debator(self.quick_thinking_llm)
         safe_analyst = create_safe_debator(self.quick_thinking_llm)
+        neutral_analyst = create_neutral_debator(self.quick_thinking_llm)  # RESTORED per user request
         # Ask/answer functionality integrated into core risk analysts
-        # Neutral analyst functionality absorbed by risk manager
 
         risk_manager_node = create_risk_manager(
             self.deep_thinking_llm, self.risk_manager_memory, toolkit=self.toolkit
@@ -175,10 +181,13 @@ class GraphSetup:
         # Add other nodes
         workflow.add_node("Bull Researcher", bull_researcher_node)
         workflow.add_node("Bear Researcher", bear_researcher_node)
+        workflow.add_node("Bull Crossex Researcher", bull_crossex_researcher_node)  # RESTORED
+        workflow.add_node("Bear Crossex Researcher", bear_crossex_researcher_node)  # RESTORED
         workflow.add_node("Research Manager", research_manager_node)
         workflow.add_node("Trader", trader_node)
         workflow.add_node("Risky Analyst", risky_analyst)
         workflow.add_node("Safe Analyst", safe_analyst)
+        workflow.add_node("Neutral Analyst", neutral_analyst)  # RESTORED
         workflow.add_node("Risk Judge", risk_manager_node)
         workflow.add_node("tools_Risk Judge", tool_nodes["riskJudge"])
         workflow.add_node("Quant Options Manager", quant_options_manager_node)
@@ -232,6 +241,8 @@ class GraphSetup:
             self.conditional_logic.should_continue_debate,
             {
                 "Bear Researcher": "Bear Researcher",
+                "Bull Crossex Researcher": "Bull Crossex Researcher",  # RESTORED
+                "Bear Crossex Researcher": "Bear Crossex Researcher",  # RESTORED
                 "Research Manager": "Research Manager",
             },
         )
@@ -240,6 +251,24 @@ class GraphSetup:
             self.conditional_logic.should_continue_debate,
             {
                 "Bull Researcher": "Bull Researcher",
+                "Bull Crossex Researcher": "Bull Crossex Researcher",  # RESTORED
+                "Bear Crossex Researcher": "Bear Crossex Researcher",  # RESTORED
+                "Research Manager": "Research Manager",
+            },
+        )
+        # Add crossex researcher conditional edges - RESTORED
+        workflow.add_conditional_edges(
+            "Bull Crossex Researcher",
+            self.conditional_logic.should_continue_debate,
+            {
+                "Bear Crossex Researcher": "Bear Crossex Researcher",
+                "Research Manager": "Research Manager",
+            },
+        )
+        workflow.add_conditional_edges(
+            "Bear Crossex Researcher",
+            self.conditional_logic.should_continue_debate,
+            {
                 "Research Manager": "Research Manager",
             },
         )
@@ -254,6 +283,7 @@ class GraphSetup:
             self.conditional_logic.should_continue_risk_analysis,
             {
                 "Safe Analyst": "Safe Analyst",
+                "Neutral Analyst": "Neutral Analyst",  # RESTORED
                 "Risk Judge": "Risk Judge",
             },
         )
@@ -262,6 +292,15 @@ class GraphSetup:
             self.conditional_logic.should_continue_risk_analysis,
             {
                 "Risky Analyst": "Risky Analyst",
+                "Neutral Analyst": "Neutral Analyst",  # RESTORED
+                "Risk Judge": "Risk Judge",
+            },
+        )
+        # Add neutral analyst conditional edge - RESTORED
+        workflow.add_conditional_edges(
+            "Neutral Analyst",
+            self.conditional_logic.should_continue_risk_analysis,
+            {
                 "Risk Judge": "Risk Judge",
             },
         )
