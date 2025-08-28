@@ -227,11 +227,25 @@ class GraphSetup:
             current_clear = f"Msg Clear {analyst_type.capitalize()}"
 
             # Add conditional edges for current analyst
-            workflow.add_conditional_edges(
-                current_analyst,
-                getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
-                [current_tools, current_clear],
-            )
+            if analyst_type == "market":
+                # Special handling for Market Analyst to support multi-ticker routing
+                workflow.add_conditional_edges(
+                    current_analyst,
+                    self.conditional_logic.should_continue_market,
+                    {
+                        current_tools: current_tools,
+                        current_clear: current_clear,
+                        "Multi-Ticker Portfolio Optimizer": "Multi-Ticker Portfolio Optimizer"  # Multi-ticker return path
+                    },
+                )
+            else:
+                # Standard analyst routing
+                workflow.add_conditional_edges(
+                    current_analyst,
+                    getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
+                    [current_tools, current_clear],
+                )
+            
             workflow.add_edge(current_tools, current_analyst)
 
             # Connect to next analyst or to Bull Researcher if this is the last analyst

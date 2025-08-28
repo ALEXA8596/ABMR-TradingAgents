@@ -28,7 +28,7 @@ def test_portfolio_optimization():
         
         # Test with multiple tickers
         tickers = ["SPY", "AAPL", "TSLA"]
-        date = "2025-08-27"
+        date = "2025-08-21"
         
         print(f"📊 Testing portfolio optimization for: {', '.join(tickers)}")
         print(f"📅 Analysis date: {date}")

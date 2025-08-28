@@ -97,7 +97,10 @@ class Propagator:
                     "investment_plan": "",
                     "trader_investment_plan": "",
                     "final_trade_decision": "",
-                    "analysis_complete": False
+                    "analysis_complete": False,
+                    "current_analysis_step": "market_analysis",
+                    "analysis_attempts": 0,
+                    "last_analysis_time": None
                 } for ticker in tickers
             },
             "portfolio_optimizer_decision": "",

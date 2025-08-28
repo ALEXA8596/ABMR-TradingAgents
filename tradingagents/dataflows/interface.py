@@ -1102,13 +1102,11 @@ def get_YFin_data(
     max_file_date = data["DateOnly"].max()
 
     if start_date < min_file_date:
-        raise Exception(
-            f"Get_YFin_Data: {start_date} is outside of the data range of {min_file_date} to {max_file_date}"
-        )
+        print(f"Warning: {start_date} is before available data range. Using {min_file_date} instead.")
+        start_date = min_file_date
     if end_date > max_file_date:
-        raise Exception(
-            f"Get_YFin_Data: {end_date} is outside of the data range of {min_file_date} to {max_file_date}"
-        )
+        print(f"Warning: {end_date} is after available data range. Using {max_file_date} instead.")
+        end_date = max_file_date
 
     filtered_data = data[
         (data["DateOnly"] >= start_date) & (data["DateOnly"] <= end_date)

@@ -15,9 +15,36 @@ class ConditionalLogic:
         """Determine if market analysis should continue."""
         messages = state["messages"]
         last_message = messages[-1]
-        if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
-            return "tools_market"
-        return "Msg Clear Market"
+        
+        # Check if we're in multi-ticker portfolio mode
+        if "tickers" in state and len(state.get("tickers", [])) > 1:
+            # In multi-ticker mode, check if current ticker analysis is complete
+            current_ticker_index = state.get("current_ticker_index", 0)
+            tickers = state.get("tickers", [])
+            individual_reports = state.get("individual_reports", {})
+            
+            if current_ticker_index < len(tickers):
+                current_ticker = tickers[current_ticker_index]
+                current_ticker_report = individual_reports.get(current_ticker, {})
+                
+                # If there are tool calls, continue with tools
+                if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
+                    return "tools_market"
+                
+                # If ticker analysis is complete, return to portfolio optimizer
+                if self._is_ticker_analysis_complete(current_ticker_report):
+                    return "Multi-Ticker Portfolio Optimizer"  # Route back to Multi-Ticker Portfolio Optimizer
+                else:
+                    # Analysis not complete, continue with tools or return to portfolio optimizer
+                    return "tools_market"  # Continue with tools for more analysis
+            else:
+                # All tickers processed, return to portfolio optimizer
+                return "Multi-Ticker Portfolio Optimizer"
+        else:
+            # Single ticker mode - use original logic
+            if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
+                return "tools_market"
+            return "Msg Clear Market"
 
     def should_continue_quant_market(self, state: AgentState):
         """Determine if quant market analysis should continue."""

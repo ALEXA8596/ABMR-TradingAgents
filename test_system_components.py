@@ -44,7 +44,7 @@ def test_portfolio_state_structure():
         
         # Test portfolio state creation
         portfolio_state = propagator.create_portfolio_state(
-            ["SPY", "AAPL", "TSLA"], "2025-08-27"
+            ["SPY", "AAPL", "TSLA"], "2025-08-21"
         )
         
         print(f"✅ Portfolio state created with {len(portfolio_state.get('tickers', []))} tickers")
@@ -102,12 +102,12 @@ def test_conditional_logic():
         # Create test states
         single_ticker_state = {
             "tickers": ["SPY"],
-            "trade_date": "2025-08-27"
+            "trade_date": "2025-08-21"
         }
         
         multi_ticker_state = {
             "tickers": ["SPY", "AAPL", "TSLA"],
-            "trade_date": "2025-08-27",
+            "trade_date": "2025-08-21",
             "current_ticker_index": 0,
             "ticker_analysis_complete": {"SPY": False, "AAPL": False, "TSLA": False},
             "individual_reports": {}

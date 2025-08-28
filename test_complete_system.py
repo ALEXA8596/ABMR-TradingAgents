@@ -60,7 +60,7 @@ def test_portfolio_state_structure():
                 }
         
         propagator = MockPropagator()
-        state = propagator.create_portfolio_state(["SPY", "AAPL", "TSLA"], "2025-08-27")
+        state = propagator.create_portfolio_state(["SPY", "AAPL", "TSLA"], "2025-08-21")
         
         # Verify state structure
         required_keys = ["tickers", "trade_date", "current_ticker_index", "ticker_analysis_complete", "portfolio_analysis_state"]
@@ -132,7 +132,7 @@ def test_multi_ticker_optimizer():
         # Test with mock state
         test_state = {
             "tickers": ["SPY", "AAPL", "TSLA"],
-            "trade_date": "2025-08-27",
+            "trade_date": "2025-08-21",
             "individual_reports": {
                 "SPY": {"analysis_complete": True},
                 "AAPL": {"analysis_complete": True},

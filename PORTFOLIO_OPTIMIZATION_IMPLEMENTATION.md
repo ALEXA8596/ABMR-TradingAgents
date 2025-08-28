@@ -119,7 +119,7 @@ from tradingagents.graph.trading_graph import TradingAgentsGraph
 
 ta = TradingAgentsGraph(debug=True, config=config)
 tickers = ["SPY", "AAPL", "TSLA"]
-final_state, decision = ta.propagate_portfolio(tickers, "2025-08-27")
+final_state, decision = ta.propagate_portfolio(tickers, "2025-08-21")
 ```
 
 ### **Testing**

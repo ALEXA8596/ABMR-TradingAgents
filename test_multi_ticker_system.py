@@ -30,7 +30,7 @@ def test_multi_ticker_system():
         # Test portfolio state creation
         print("\n1. Testing Portfolio State Creation...")
         portfolio_state = graph.propagator.create_portfolio_state(
-            ["SPY", "AAPL", "TSLA"], "2025-08-27"
+            ["SPY", "AAPL", "TSLA"], "2025-08-21"
         )
         
         print(f"✅ Portfolio state created with {len(portfolio_state.get('tickers', []))} tickers")
@@ -128,7 +128,7 @@ def test_portfolio_optimization_flow():
         # Create a test portfolio state
         test_state = {
             "tickers": ["SPY", "AAPL", "TSLA"],
-            "trade_date": "2025-08-27",
+            "trade_date": "2025-08-21",
             "current_ticker_index": 0,
             "ticker_analysis_complete": {"SPY": False, "AAPL": False, "TSLA": False},
             "portfolio_analysis_state": {

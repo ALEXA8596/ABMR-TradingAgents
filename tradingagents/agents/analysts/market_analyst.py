@@ -13,21 +13,42 @@ def create_market_analyst(llm, toolkit):
         if "tickers" in state:
             # Multi-ticker portfolio mode
             tickers = state["tickers"]
-            ticker = tickers[0]  # Analyze first ticker for now
-            company_name = ticker
-            is_portfolio_mode = True
+            current_ticker_index = state.get("current_ticker_index", 0)
+            
+            # Only analyze the current ticker, not all tickers
+            if current_ticker_index < len(tickers):
+                ticker = tickers[current_ticker_index]
+                company_name = ticker
+                is_portfolio_mode = True
+                
+                # Check if this ticker already has a complete market report
+                individual_reports = state.get("individual_reports", {})
+                if ticker in individual_reports:
+                    ticker_report = individual_reports[ticker]
+                    if ticker_report.get("analysis_complete", False) and ticker_report.get("market_report", ""):
+                        # This ticker is already analyzed, return existing report
+                        return {
+                            "messages": [],
+                            "market_report": ticker_report.get("market_report", ""),
+                            "individual_reports": individual_reports,
+                            "current_ticker_index": current_ticker_index
+                        }
+            else:
+                # All tickers analyzed, return empty result
+                return {
+                    "messages": [],
+                    "market_report": "All tickers already analyzed",
+                }
         elif "company_of_interest" in state:
-            # Single ticker mode (backward compatibility)
-            ticker = state["company_of_interest"]
+            # Single ticker mode
+            ticker = state["company_of_interest"] 
             company_name = state["company_of_interest"]
             is_portfolio_mode = False
         else:
-            # Fallback - this shouldn't happen but let's handle it gracefully
-            print("Warning: No ticker information found in state")
-            return {
-                "messages": [],
-                "market_report": "Error: No ticker information available",
-            }
+            # Fallback
+            ticker = "SPY"
+            company_name = "SPY"
+            is_portfolio_mode = False
 
         # Blackboard integration
         blackboard_agent = create_agent_blackboard("MA_001", "MarketAnalyst")
@@ -52,7 +73,12 @@ def create_market_analyst(llm, toolkit):
             ]
 
         system_message = (
-            """You are a trading assistant tasked with analyzing financial markets. Your role is to select the **most relevant indicators** for a given market condition or trading strategy from the following comprehensive list. The goal is to choose up to **8 indicators** that provide complementary insights without redundancy. Categories and each category's indicators are:
+            f"""You are a trading assistant tasked with analyzing the financial market for {ticker} specifically. 
+                    This is part of a multi-ticker portfolio analysis, but you should focus ONLY on {ticker} right now.
+                    
+                    Your role is to select the **most relevant indicators** for {ticker} from the following comprehensive list. 
+                    The goal is to choose up to **8 indicators** that provide complementary insights without redundancy. 
+                    Categories and each category's indicators are:
 
 Basic Price Analysis:
 - delta: Price change between periods
@@ -71,13 +97,8 @@ Moving Averages:
 - dma: Different of Moving Average (10, 50): Shows divergence between short and long-term trends
 - tema: Triple Exponential Moving Average: Reduces lag while maintaining smoothness
 - kama: Kaufman's Adaptive Moving Average: Adjusts to market volatility automatically
-- lrma: Linear Regression Moving Average: Projects trend based on linear regression
-
-Volatility & Statistical Indicators:
-- mstd: Moving Standard Deviation: Measures price volatility over time
-- mvar: Moving Variance: Statistical measure of price dispersion
-- boll: Bollinger Middle: A 20 SMA serving as the basis for Bollinger Bands. Usage: Acts as a dynamic benchmark for price movement. Tips: Combine with the upper and lower bands to effectively spot breakouts or reversals.
-- boll_ub: Bollinger Upper Band: Typically 2 standard deviations above the middle line. Usage: Signals potential overbought conditions and breakout zones. Tips: Confirm signals with other tools; prices may ride the band in strong trends.
+- boll: Bollinger Bands: Volatility-based envelope indicator. Usage: Identify overbought/oversold conditions and potential breakout zones. Tips: Bands contract in low volatility and expand in high volatility; use with other indicators for confirmation.
+- boll_mb: Bollinger Middle Band: The moving average center line. Usage: Core trend reference and mean reversion target. Tips: Acts as dynamic support/resistance; price often returns to this line.
 - boll_lb: Bollinger Lower Band: Typically 2 standard deviations below the middle line. Usage: Indicates potential oversold conditions. Tips: Use additional analysis to avoid false reversal signals.
 - atr: ATR: Averages true range to measure volatility. Usage: Set stop-loss levels and adjust position sizes based on current market volatility. Tips: It's a reactive measure, so use it as part of a broader risk management strategy.
 - tr: True Range: Single-period volatility measure
@@ -136,7 +157,7 @@ Advanced Analysis:
 - ichimoku: Ichimoku Cloud: Complete trend analysis system with multiple components
 - coppock: Coppock Curve: Long-term momentum indicator for major trend changes
 
-- Select indicators that provide diverse and complementary information. Avoid redundancy (e.g., do not select both rsi and stochrsi unless specifically needed). Also briefly explain why they are suitable for the given market context. When you tool call, please use the exact name of the indicators provided above as they are defined parameters, otherwise your call will fail. Please make sure to call get_YFin_data first to retrieve the CSV that is needed to generate indicators. Write a very detailed and nuanced report of the trends you observe. Do not simply state the trends are mixed, provide detailed and finegrained analysis and insights that may help traders make decisions."""
+- Select indicators that provide diverse and complementary information for {ticker} specifically. Avoid redundancy (e.g., do not select both rsi and stochrsi unless specifically needed). Also briefly explain why they are suitable for {ticker} in the given market context. When you tool call, please use the exact name of the indicators provided above as they are defined parameters, otherwise your call will fail. Please make sure to call get_YFin_data first to retrieve the CSV that is needed to generate indicators. Write a very detailed and nuanced report of the trends you observe for {ticker}. Do not simply state the trends are mixed, provide detailed and finegrained analysis and insights that may help traders make decisions."""
             + """ Make sure to append a Markdown table at the end of the report to organize key points in the report, organized and easy to read."""
             + f"\n\nBlackboard Context:{blackboard_context}"
         )
@@ -188,8 +209,9 @@ Advanced Analysis:
 
         print(result.content)
         
-        if len(result.tool_calls) == 0:
-            report = result.content.encode('utf-8', errors='replace').decode('utf-8') if result.content else ""
+        # Extract report content - this should work regardless of tool calls
+        if hasattr(result, 'content') and result.content:
+            report = result.content.encode('utf-8', errors='replace').decode('utf-8')
 
         # Escape the result content to handle Unicode characters
         if hasattr(result, 'content') and result.content:
@@ -223,9 +245,16 @@ Advanced Analysis:
         if is_portfolio_mode:
             # Update the individual reports for the ticker being analyzed
             if "individual_reports" in state:
-                # Always mark the ticker as complete to prevent infinite loops
+                if ticker not in state["individual_reports"]:
+                    state["individual_reports"][ticker] = {}
                 state["individual_reports"][ticker]["market_report"] = report
-                state["individual_reports"][ticker]["analysis_complete"] = True
+                
+                # Mark as complete if we have a substantial report
+                if report and len(report.strip()) > 50:  # Ensure we have a meaningful report
+                    state["individual_reports"][ticker]["analysis_complete"] = True
+                else:
+                    # No substantial report yet, keep analysis incomplete
+                    state["individual_reports"][ticker]["analysis_complete"] = False
             
             return {
                 "messages": [result],
