@@ -121,35 +121,15 @@ class GraphSetup:
             self.deep_thinking_llm, self.invest_judge_memory
         )
         
-        # Cross Ex Nodes
-        
-        bull_researcher_ask_node = create_bull_researcher_ask(
-            self.deep_thinking_llm, self.bull_memory
-        )
-        bull_researcher_ans_node = create_bull_researcher_ans(
-            self.deep_thinking_llm, self.bull_memory
-        )
-        
-        bear_researcher_ask_node = create_bear_researcher_ask(
-            self.deep_thinking_llm, self.bear_memory
-        )
-        bear_researcher_ans_node = create_bear_researcher_ans(
-            self.deep_thinking_llm, self.bear_memory
-        )
+        # Cross Ex Nodes removed - functionality integrated into core researchers
         
         trader_node = create_trader(self.quick_thinking_llm, self.trader_memory)
 
         # Create risk analysis nodes
         risky_analyst = create_risky_debator(self.quick_thinking_llm)
-
-        risky_analyst_ask = create_risky_debator_ask(self.quick_thinking_llm)
-        risky_analyst_ans = create_risky_debator_ans(self.quick_thinking_llm)
-        
-        neutral_analyst = create_neutral_debator(self.quick_thinking_llm)
         safe_analyst = create_safe_debator(self.quick_thinking_llm)
-        
-        safe_analyst_ask = create_safe_debator_ask(self.quick_thinking_llm)
-        safe_analyst_ans = create_safe_debator_ans(self.quick_thinking_llm)
+        # Ask/answer functionality integrated into core risk analysts
+        # Neutral analyst functionality absorbed by risk manager
 
         risk_manager_node = create_risk_manager(
             self.deep_thinking_llm, self.risk_manager_memory, toolkit=self.toolkit
@@ -195,19 +175,10 @@ class GraphSetup:
         # Add other nodes
         workflow.add_node("Bull Researcher", bull_researcher_node)
         workflow.add_node("Bear Researcher", bear_researcher_node)
-        workflow.add_node("Bull Researcher Ask", bull_researcher_ask_node)
-        workflow.add_node("Bull Researcher Ans", bull_researcher_ans_node)
-        workflow.add_node("Bear Researcher Ask", bear_researcher_ask_node)
-        workflow.add_node("Bear Researcher Ans", bear_researcher_ans_node)
         workflow.add_node("Research Manager", research_manager_node)
         workflow.add_node("Trader", trader_node)
         workflow.add_node("Risky Analyst", risky_analyst)
-        workflow.add_node("Risky Analyst Ask", risky_analyst_ask)
-        workflow.add_node("Risky Analyst Ans", risky_analyst_ans)
-        workflow.add_node("Neutral Analyst", neutral_analyst)
         workflow.add_node("Safe Analyst", safe_analyst)
-        workflow.add_node("Safe Analyst Ask", safe_analyst_ask)
-        workflow.add_node("Safe Analyst Ans", safe_analyst_ans)
         workflow.add_node("Risk Judge", risk_manager_node)
         workflow.add_node("tools_Risk Judge", tool_nodes["riskJudge"])
         workflow.add_node("Quant Options Manager", quant_options_manager_node)
@@ -261,10 +232,6 @@ class GraphSetup:
             self.conditional_logic.should_continue_debate,
             {
                 "Bear Researcher": "Bear Researcher",
-                "Bull Researcher Ask": "Bull Researcher Ask",
-                "Bear Researcher Ask": "Bear Researcher Ask",
-                "Bull Researcher Ans": "Bull Researcher Ans",
-                "Bear Researcher Ans": "Bear Researcher Ans",
                 "Research Manager": "Research Manager",
             },
         )
@@ -273,63 +240,11 @@ class GraphSetup:
             self.conditional_logic.should_continue_debate,
             {
                 "Bull Researcher": "Bull Researcher",
-                "Bull Researcher Ask": "Bull Researcher Ask",
-                "Bear Researcher Ask": "Bear Researcher Ask",
-                "Bull Researcher Ans": "Bull Researcher Ans",
-                "Bear Researcher Ans": "Bear Researcher Ans",
                 "Research Manager": "Research Manager",
             },
         )
         
-        # Replace former Cross Examination conditional edges with Ask/Ans node edges
-        workflow.add_conditional_edges(
-            "Bull Researcher Ask",
-            self.conditional_logic.should_continue_debate,
-            {
-                "Bull Researcher Ans": "Bull Researcher Ans",
-                "Bear Researcher Ask": "Bear Researcher Ask",
-                "Bear Researcher Ans": "Bear Researcher Ans",
-                "Bull Researcher": "Bull Researcher",
-                "Bear Researcher": "Bear Researcher",
-                "Research Manager": "Research Manager",
-            },
-        )
-        workflow.add_conditional_edges(
-            "Bull Researcher Ans",
-            self.conditional_logic.should_continue_debate,
-            {
-                "Bear Researcher Ask": "Bear Researcher Ask",
-                "Bear Researcher Ans": "Bear Researcher Ans",
-                "Bull Researcher": "Bull Researcher",
-                "Bear Researcher": "Bear Researcher",
-                "Bull Researcher Ask": "Bull Researcher Ask",
-                "Research Manager": "Research Manager",
-            },
-        )
-        workflow.add_conditional_edges(
-            "Bear Researcher Ask",
-            self.conditional_logic.should_continue_debate,
-            {
-                "Bear Researcher Ans": "Bear Researcher Ans",
-                "Bull Researcher Ask": "Bull Researcher Ask",
-                "Bull Researcher Ans": "Bull Researcher Ans",
-                "Bull Researcher": "Bull Researcher",
-                "Bear Researcher": "Bear Researcher",
-                "Research Manager": "Research Manager",
-            },
-        )
-        workflow.add_conditional_edges(
-            "Bear Researcher Ans",
-            self.conditional_logic.should_continue_debate,
-            {
-                "Bull Researcher Ask": "Bull Researcher Ask",
-                "Bull Researcher Ans": "Bull Researcher Ans",
-                "Bull Researcher": "Bull Researcher",
-                "Bear Researcher": "Bear Researcher",
-                "Bear Researcher Ask": "Bear Researcher Ask",
-                "Research Manager": "Research Manager",
-            },
-        )
+        # Ask/answer pattern removed - simplified bull/bear direct interaction
         
         workflow.add_edge("Research Manager", "Trader")
         
@@ -344,15 +259,6 @@ class GraphSetup:
         )
         workflow.add_conditional_edges(
             "Safe Analyst",
-            self.conditional_logic.should_continue_risk_analysis,
-            {
-                "Neutral Analyst": "Neutral Analyst",
-                "Risk Judge": "Risk Judge",
-            },
-        )
-        
-        workflow.add_conditional_edges(
-            "Neutral Analyst",
             self.conditional_logic.should_continue_risk_analysis,
             {
                 "Risky Analyst": "Risky Analyst",

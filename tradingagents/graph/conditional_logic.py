@@ -112,48 +112,18 @@ class ConditionalLogic:
             # Fallback - no debate state found
             count = 0
 
-        # 1 => Bullish Researcher
-        # 2 => Bearish Researcher
-        # 3 => Bullish Researcher Ask
-        # 4 => Bullish Researcher Ans
-        # 5 => Bearish Researcher Ask
-        # 6 => Bullish Researcher Ans
-        # 7 => Bullish Researcher
-        # 8 => Bearish Researcher
-        # 9 => Research Manager
-        # Repeat 3 to 9 as needed
+        # Simplified flow: Bull → Bear → Research Manager
+        # 1 => Bull Researcher
+        # 2 => Bear Researcher  
+        # 3+ => Research Manager
 
         if count == 0:
             return "Bull Researcher"
         elif count == 1:
             return "Bear Researcher"
-        elif count == 2:
-            return "Bull Researcher Ask"
-        elif count == 3:
-            return "Bull Researcher Ans"
-        elif count == 4:
-            return "Bear Researcher Ask"
-        elif count == 5:
-            return "Bull Researcher Ans"
-        elif count == 6:
-            return "Bull Researcher"
-        elif count == 7:
-            return "Bear Researcher"
-        elif count == 8:
-            return "Research Manager"
         else:
-            # For counts >= 9, repeat 3-9 as needed
-            repeat_sequence = [
-                "Bull Researcher Ask",
-                "Bull Researcher Ans",
-                "Bear Researcher Ask",
-                "Bull Researcher Ans",
-                "Bull Researcher",
-                "Bear Researcher",
-                "Research Manager",
-            ]
-            idx = (count - 2) % len(repeat_sequence)
-            return repeat_sequence[idx]
+            # After both researchers have spoken, go to Research Manager
+            return "Research Manager"
 
     def should_continue_risk_analysis(self, state: AgentState) -> str:
         """Determine if risk analysis should continue."""
@@ -174,34 +144,14 @@ class ConditionalLogic:
             
         print(f"[DEBUG] should_continue_risk_analysis: count={count}, max_risk_discuss_rounds={self.max_risk_discuss_rounds}")
         # Check if we've reached the maximum number of rounds
-        if (
-            count >= 3 * self.max_risk_discuss_rounds
-        ):  # 3 rounds of back-and-forth between 3 agents
-            print("[DEBUG] Risk debate complete. Handing off to Risk Judge.")
+        if count >= 2 * self.max_risk_discuss_rounds:  # Simplified: 2 analysts instead of 3
+            print("[DEBUG] Risk analysis complete. Handing off to Risk Judge.")
             return "Risk Judge"
         
-        
+        # Simplified flow: Risky → Safe → Risk Judge
         # 1 => Risky Analyst
         # 2 => Safe Analyst
-        # 3 => Neutral Analyst
-        # 4 => Risky Analyst Ask
-        # 5 => Risky Analyst Ans
-        # 6 => Safe Analyst Ask
-        # 7 => Risky Analyst Ans
-        # 8 => Risky Analyst
-        # 9 => Safe Analyst
-        # Repeat 4 to 9 as needed
-
-        # 1 => Risky Analyst
-        # 2 => Safe Analyst
-        # 3 => Neutral Analyst
-        # 4 => Risky Analyst Ask
-        # 5 => Risky Analyst Ans
-        # 6 => Safe Analyst Ask
-        # 7 => Risky Analyst Ans
-        # 8 => Risky Analyst
-        # 9 => Safe Analyst
-        # Repeat 4 to 9 as needed
+        # 3+ => Risk Judge
 
         if count == 0:
             print("[DEBUG] Next: Risky Analyst")
@@ -209,41 +159,10 @@ class ConditionalLogic:
         elif count == 1:
             print("[DEBUG] Next: Safe Analyst")
             return "Safe Analyst"
-        elif count == 2:
-            print("[DEBUG] Next: Neutral Analyst")
-            return "Neutral Analyst"
-        elif count == 3:
-            print("[DEBUG] Next: Risky Analyst Ask")
-            return "Risky Analyst Ask"
-        elif count == 4:
-            print("[DEBUG] Next: Risky Analyst Ans")
-            return "Risky Analyst Ans"
-        elif count == 5:
-            print("[DEBUG] Next: Safe Analyst Ask")
-            return "Safe Analyst Ask"
-        elif count == 6:
-            print("[DEBUG] Next: Risky Analyst Ans")
-            return "Risky Analyst Ans"
-        elif count == 7:
-            print("[DEBUG] Next: Risky Analyst")
-            return "Risky Analyst"
-        elif count == 8:
-            print("[DEBUG] Next: Safe Analyst")
-            return "Safe Analyst"
         else:
-            # For counts >= 9, repeat sequence 4-9 pattern (mapped via repeat_sequence) dynamically
-            repeat_sequence = [
-                "Risky Analyst Ask",  # analogous to original position 4
-                "Risky Analyst Ans",  # 5
-                "Safe Analyst Ask",   # 6
-                "Risky Analyst Ans",  # 7
-                "Risky Analyst",      # 8
-                "Safe Analyst",       # 9
-            ]
-            idx = (count - 3) % len(repeat_sequence)
-            next_role = repeat_sequence[idx]
-            print(f"[DEBUG] Next (loop): {next_role}")
-            return next_role
+            # After both analysts have spoken, go to Risk Judge
+            print("[DEBUG] Next: Risk Judge")
+            return "Risk Judge"
 
     def should_continue_portfolio_flow(self, state: AgentState) -> str:
         """Determine if portfolio optimization flow should continue."""
