@@ -5,34 +5,12 @@ from tradingagents.blackboard.utils import create_agent_blackboard
 
 
 def create_macroeconomic_analyst(llm, toolkit):
-
-    def macroeconomic_analyst_node(state):
-        current_date = state["trade_date"]
-        
-        # Handle both single ticker and multi-ticker modes
-        if "tickers" in state:
-            # Multi-ticker portfolio mode
-            tickers = state["tickers"]
-            ticker = tickers[0]  # Analyze first ticker for now
-            company_name = ticker
-            is_portfolio_mode = True
-        elif "company_of_interest" in state:
-            # Single ticker mode (backward compatibility)
-            ticker = state["company_of_interest"]
-            company_name = state["company_of_interest"]
-            is_portfolio_mode = False
-        else:
-            # Fallback - this shouldn't happen but let's handle it gracefully
-            print("Warning: No ticker information found in state")
-            return {
-                "messages": [],
-                "macroeconomic_report": "Error: No ticker information available",
-            }
-
+    def _analyze_single_ticker_macro(ticker: str, current_date: str, toolkit, llm, memory):
+        """Analyze a single ticker for macroeconomic factors and return the report and messages."""
         # Blackboard integration
         blackboard_agent = create_agent_blackboard("MEA_001", "MacroeconomicAnalyst")
-        # Read recent macroeconomic analysis reports for context
         recent_analyses = blackboard_agent.get_analysis_reports(ticker=ticker)
+        
         blackboard_context = ""
         if recent_analyses:
             blackboard_context += "\n\nRecent Macroeconomic Analysis Reports on Blackboard:\n"
@@ -40,203 +18,161 @@ def create_macroeconomic_analyst(llm, toolkit):
                 content = analysis.get('content', {})
                 blackboard_context += f"- {analysis['sender'].get('role', 'Unknown')}: {content.get('recommendation', 'N/A')} (Confidence: {content.get('confidence', 'N/A')})\n"
 
-        if toolkit.config["online_tools"]:
-            tools = [
-                toolkit.get_YFin_data_online,
-                toolkit.get_stockstats_indicators_report_online,
-            ]
-        else:
-            tools = [
-                toolkit.get_YFin_data,
-                toolkit.get_stockstats_indicators_report,
-            ]
+        # Get macroeconomic data and perform analysis
+        curr_situation = f"Macroeconomic analysis for {ticker} on {current_date}{blackboard_context}"
+        past_memories = []
+        past_memory_str = ""
+        if memory:
+            past_memories = memory.get_memories(curr_situation, n_matches=2)
+            past_memory_str = "\n\n".join([rec["recommendation"] for rec in past_memories])
 
-        system_message = (
-            """You are a Macroeconomic Analyst specializing in analyzing how economic factors, monetary policy, and global economic conditions impact financial markets and individual securities. Your role is to provide comprehensive macroeconomic analysis that helps traders understand the broader economic context affecting their trading decisions.
-
-## Your Analysis Focus Areas:
-
-### 1. Economic Indicators & Data
-- **GDP Growth (Gt)**: Economic expansion/contraction trends and their impact on market sentiment
-- **Inflation Rate (It)**: CPI, PPI, PCE inflation rates and trends affecting bond yields and equity valuations
-- **Unemployment Rate (Ut)**: Employment data, job creation, wage growth, and labor market health
-- **Consumer Confidence Index (Ct)**: Spending patterns, economic sentiment, and consumer behavior trends
-- **Manufacturing Data**: PMI, industrial production, capacity utilization, and sector health
-- **Housing Market**: Housing starts, building permits, home sales, and real estate trends
-
-### 2. Monetary Policy & Central Banking
-- **Fed Funds Rate (Ft)**: Current interest rate levels, rate hike/cut expectations, and monetary policy stance
-- **Federal Reserve Policy**: FOMC decisions, forward guidance, balance sheet management, and policy outlook
-- **Global Central Banks**: ECB, BoJ, BoE, PBOC policy coordination and divergence
-- **Money Supply (Mt)**: Liquidity conditions, credit availability, and financial market conditions
-
-### 3. Global Economic Factors
-- **Trade Relations**: Tariffs, trade agreements, supply chain disruptions, and international commerce
-- **Geopolitical Events**: Political stability, international conflicts, sanctions, and global risk factors
-- **Currency Markets**: US Dollar Index (Dt), INR/USD Exchange Rate (Et), and currency correlations
-- **Commodity Prices**: Crude Oil Prices (Ot), Gold Prices (Gdt), industrial metals, and agricultural products
-- **Emerging Markets**: Growth prospects, debt levels, political risks, and investment opportunities
-
-### 4. Market Sentiment & Risk Factors
-- **Volatility Index (VIX, Vt)**: Market fear, risk appetite, and volatility expectations
-- **S&P 500 Index (St)**: Equity market performance, sector rotation, and risk-on/risk-off sentiment
-- **Risk Appetite**: Credit spreads, safe-haven flows, and investor behavior patterns
-- **Sector Rotation**: Defensive vs. cyclical sector performance and economic cycle positioning
-- **Market Breadth**: Advance/decline ratios, new highs/lows, and market participation
-- **Institutional Flows**: Fund flows, positioning, allocation changes, and smart money movements
-
-## Analysis Approach:
-
-1. **Start with Macro Context**: Assess current economic environment and identify key trends
-2. **Variable-Specific Analysis**: Analyze each macroeconomic variable individually with current values and trends
-3. **Market Impact Assessment**: Determine how macro factors affect the specific security being analyzed
-4. **Risk Evaluation**: Identify macroeconomic risks, their probability, and potential impact
-5. **Trading Implications**: Provide actionable insights and recommendations for trading decisions
-
-## Technical Indicators for Macro Context:
-
-When analyzing market data, focus on indicators that reflect macroeconomic trends:
-
-**Trend Indicators:**
-- close_50_sma: Medium-term economic trend confirmation
-- close_200_sma: Long-term economic cycle positioning
-- close_10_ema: Short-term economic momentum shifts
-
-**Volatility & Risk Indicators:**
-- atr: Economic uncertainty and market volatility
-- boll: Economic cycle positioning and mean reversion
-- boll_ub/lb: Economic extreme conditions and reversals
-
-**Momentum Indicators:**
-- rsi: Economic momentum and overbought/oversold conditions
-- macd: Economic cycle momentum and trend changes
-- vwma: Economic trend confirmation with volume validation
-
-## Response Requirements:
-
-- Provide comprehensive macroeconomic analysis with specific economic data points for each variable
-- Explain how each macro factor impacts the specific security being analyzed
-- Identify key economic risks and opportunities with probability assessments
-- Give actionable trading recommendations based on macro analysis
-- Use technical indicators to validate macro trends
-- Include economic calendar events and their potential impact
-- Structure the response to clearly show the relationship between macro variables and market outcomes
-
-## CRITICAL: You MUST respond with ONLY a valid JSON object in the following format:
-
-{   
-    "prefix": "...", // The prefix of the response. If previous messages contain FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL**, make sure to include it in your response too. Else, leave it empty.
-    "content": "...", // Comprehensive macroeconomic analysis with economic data, policy implications, and market impact
-    "economic_variables": [{
-        "variable": "...", // Variable name (e.g., "Inflation Rate (It)", "Fed Funds Rate (Ft)", "GDP Growth (Gt)")
-        "current_value": "...", // Current value or status
-        "trend": "...", // Trend direction (increasing, decreasing, stable, mixed)
-        "impact_on_markets": "...", // How this variable affects financial markets
-        "impact_on_security": "...", // How this variable specifically affects the analyzed security
-        "confidence": 0 // Confidence in the analysis (1-100)
-    }], // List of all key macroeconomic variables with detailed analysis
-    "macro_risks": [{
-        "risk": "...", // Description of macroeconomic risk
-        "probability": "...", // High/Medium/Low probability
-        "affected_variables": ["...", "..."], // List of variables affected by this risk
-        "potential_impact": "...", // Potential impact on trading position
-        "timeframe": "..." // Short-term/Medium-term/Long-term impact
-    }], // List of macroeconomic risks to consider
-    "policy_implications": [{
-        "policy_area": "...", // Monetary policy, fiscal policy, trade policy, etc.
-        "current_stance": "...", // Current policy position
-        "expected_changes": "...", // Expected policy changes
-        "market_impact": "..." // How policy changes affect markets
-    }], // Analysis of policy implications
-    "confidence": 0, // Overall confidence in the analysis (1-100)
-    "decision": 0, // Trading decision based on macro analysis (1-100, where 1 is avoid trading, 100 is aggressive trading)
-    "table": "..." // Markdown table summarizing key macroeconomic insights and trading implications
-}
-
-Make sure to append a Markdown table at the end of the report to organize key macroeconomic insights and their trading implications."""
-            + f"\n\nBlackboard Context:{blackboard_context}"
-        )
-
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                (
-                    "system",
-                    "You are a helpful AI assistant, collaborating with other assistants."
-                    " Use the provided tools to progress towards answering the question."
-                    " If you are unable to fully answer, that's OK; another assistant with different tools"
-                    " will help where you left off. Execute what you can to make progress."
-                    " If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable,"
-                    " prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop."
-                    " You have access to the following tools: {tool_names}.\n{system_message}"
-                    "For your reference, the current date is {current_date}. The company we want to look at is {ticker}"
-                ),
-                MessagesPlaceholder(variable_name="messages"),
-            ]
-        )
-
-        prompt = prompt.partial(system_message=system_message)
-        prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
-        prompt = prompt.partial(current_date=current_date)
-        prompt = prompt.partial(ticker=ticker)
-
-        # Execute the analysis
-        messages = state["messages"]
-        response = llm.invoke(prompt.format_messages(messages=messages))
-        
-        # Parse the response
-        try:
-            # Extract the content from the response
-            content = response.content
+        # Create analysis chain
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are a professional macroeconomic analyst providing comprehensive analysis.
             
-            # Try to parse as JSON
-            if "{" in content and "}" in content:
-                start = content.find("{")
-                end = content.rfind("}") + 1
-                json_str = content[start:end]
-                
-                # Parse the JSON response
-                parsed_response = json.loads(json_str)
-                
-                # Post analysis report to blackboard
-                blackboard_agent.post_analysis_report(
-                    ticker=ticker,
-                    analysis=parsed_response,
-                    confidence=str(parsed_response.get("confidence", 50))
-                )
-                
-                # Return the parsed response
+Analyze the macroeconomic environment for {ticker} and create a detailed report covering:
+- Economic indicators (GDP, inflation, unemployment, etc.)
+- Monetary policy impacts
+- Interest rate environment
+- Global economic trends affecting the security
+- Sector-specific economic factors
+- Risk assessment from macroeconomic perspective
+
+Format your response as a structured analysis with clear sections and actionable insights.
+Include economic variables table with current values, trends, and market impacts.
+
+Current date: {current_date}
+Past relevant analysis: {past_memory_str}
+{blackboard_context}"""),
+            MessagesPlaceholder(variable_name="messages"),
+        ])
+
+        chain = prompt | llm
+        result = chain.invoke({
+            "messages": [("human", f"Provide macroeconomic analysis for {ticker}")],
+            "ticker": ticker,
+            "current_date": current_date,
+            "past_memory_str": past_memory_str,
+            "blackboard_context": blackboard_context
+        })
+
+        # Extract recommendation and confidence from response
+        report = getattr(result, 'content', '') or str(result)
+        recommendation = "Neutral"
+        confidence = "Medium"
+        
+        if "POSITIVE" in report.upper() or "BULLISH" in report.upper():
+            recommendation = "Bullish"
+        elif "NEGATIVE" in report.upper() or "BEARISH" in report.upper():
+            recommendation = "Bearish"
+        if "HIGH" in report.upper() and "CONFIDENCE" in report.upper():
+            confidence = "High"
+        elif "LOW" in report.upper() and "CONFIDENCE" in report.upper():
+            confidence = "Low"
+            
+        # Post to blackboard
+        analysis_content = {
+            "ticker": ticker,
+            "recommendation": recommendation,
+            "confidence": confidence,
+            "analysis": report
+        }
+        blackboard_agent.post_analysis_report(
+            ticker=ticker,
+            analysis=analysis_content,
+            confidence=confidence
+        )
+
+        return {
+            "report": report,
+            "messages": [result],
+            "recommendation": recommendation,
+            "confidence": confidence
+        }
+
+    def macroeconomic_analyst_node(state, memory=None):
+        current_date = state["trade_date"]
+        
+        # Handle both single ticker and multi-ticker portfolio modes
+        if "tickers" in state and state.get("tickers"):
+            # Multi-ticker portfolio mode - process ALL tickers that need macroeconomic analysis
+            tickers = state["tickers"]
+            individual_reports = state.get("individual_reports", {})
+            analyst_completion = state.get("analyst_completion", {})
+            macro_completion = analyst_completion.get("macroeconomic", {})
+            
+            # Find all tickers that need macroeconomic analysis
+            tickers_to_process = [
+                ticker for ticker in tickers 
+                if not macro_completion.get(ticker, False) and 
+                not individual_reports.get(ticker, {}).get("macroeconomic_report", "")
+            ]
+            
+            if not tickers_to_process:
+                # All tickers already have macroeconomic analysis, mark all as complete
+                updated_analyst_completion = {
+                    **analyst_completion,
+                    "macroeconomic": {ticker: True for ticker in tickers}
+                }
                 return {
-                    "messages": [response],
-                    "macroeconomic_analysis": parsed_response
+                    "messages": [],
+                    "macroeconomic_report": "All tickers already analyzed",
+                    "individual_reports": individual_reports,
+                    "analyst_completion": updated_analyst_completion
                 }
-            else:
-                # Fallback if JSON parsing fails
-                fallback_response = {
-                    "prefix": "",
-                    "content": content,
-                    "economic_variables": [],
-                    "macro_risks": [],
-                    "policy_implications": [],
-                    "confidence": 50,
-                    "decision": 50,
-                    "table": "| Factor | Status | Impact |\n|--------|--------|--------|\n| Analysis | Complete | See content above |"
-                }
+            
+            # Process all tickers that need macroeconomic analysis
+            all_reports = {}
+            all_messages = []
+            
+            for ticker in tickers_to_process:
+                print(f"🌍 Macroeconomic Analyst processing {ticker}...")
                 
-                # Post to blackboard
-                blackboard_agent.post_analysis_report(
-                    ticker=ticker,
-                    analysis=fallback_response,
-                    confidence="50"
-                )
+                # Process this ticker
+                ticker_report = _analyze_single_ticker_macro(ticker, current_date, toolkit, llm, memory)
+                all_reports[ticker] = ticker_report["report"]
+                all_messages.extend(ticker_report["messages"])
                 
-                return {
-                    "messages": [response],
-                    "macroeconomic_analysis": fallback_response
-                }
-                
-        except json.JSONDecodeError as e:
-            print(f"JSON parsing error in macroeconomic analyst: {e}")
-            # Return the raw response if JSON parsing fails
-            return {"messages": [response]}
+                # Update individual reports
+                if ticker not in individual_reports:
+                    individual_reports[ticker] = {}
+                individual_reports[ticker]["macroeconomic_report"] = ticker_report["report"]
+            
+            # Mark all processed tickers as complete for macroeconomic analysis
+            updated_macro_completion = {**macro_completion}
+            for ticker in tickers_to_process:
+                updated_macro_completion[ticker] = True
+            
+            updated_analyst_completion = {
+                **analyst_completion,
+                "macroeconomic": updated_macro_completion
+            }
+            
+            return {
+                "messages": all_messages,
+                "macroeconomic_report": f"Completed macroeconomic analysis for: {', '.join(tickers_to_process)}",
+                "individual_reports": individual_reports,
+                "analyst_completion": updated_analyst_completion
+            }
+        elif "company_of_interest" in state:
+            # Single ticker mode (backward compatibility)
+            ticker = state["company_of_interest"]
+            company_name = state["company_of_interest"]
+            is_portfolio_mode = False
+            
+            # Process single ticker with original logic
+            ticker_report = _analyze_single_ticker_macro(ticker, current_date, toolkit, llm, memory)
+            
+            return {
+                "messages": ticker_report["messages"],
+                "macroeconomic_report": ticker_report["report"],
+            }
+        else:
+            # Fallback - this shouldn't happen but let's handle it gracefully
+            print("Warning: No ticker information found in state")
+            return {
+                "messages": [],
+                "macroeconomic_report": "Error: No ticker information available",
+            }
 
     return macroeconomic_analyst_node 

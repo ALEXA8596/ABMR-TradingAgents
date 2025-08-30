@@ -56,57 +56,81 @@ class Propagator:
             "trade_date": str(trade_date),
             "current_ticker_index": 0,  # Track which ticker we're processing
             "ticker_analysis_complete": {ticker: False for ticker in tickers},
-            "portfolio_analysis_state": {
-                "individual_analyses": {},
-                "cross_ticker_correlations": {},
-                "sector_analysis": {},
-                "portfolio_risk_assessment": {},
-                "portfolio_optimization": {},
-                "portfolio_balance": {},
-                "correlation_matrix": {},
-                "sector_allocations": {},
-                "risk_metrics": {}
+            
+            # Phase-based processing tracking
+            "current_phase": "analysts",  # analysts -> researchers -> risk -> optimization
+            "current_analyst_type": "market",  # Which analyst type is currently processing
+            
+            # Analyst completion tracking (for phase-based processing)
+            "analyst_completion": {
+                "market": {ticker: False for ticker in tickers},
+                "macroeconomic": {ticker: False for ticker in tickers},
+                "social": {ticker: False for ticker in tickers},
+                "news": {ticker: False for ticker in tickers},
+                "fundamentals": {ticker: False for ticker in tickers}
             },
+            
+            # Researcher completion tracking
+            "researcher_completion": {
+                "bull": {ticker: False for ticker in tickers},
+                "bear": {ticker: False for ticker in tickers},
+                "bull_crossex": {ticker: False for ticker in tickers},
+                "bear_crossex": {ticker: False for ticker in tickers}
+            },
+            
+            # Risk analysis completion tracking
+            "risk_completion": {
+                "conservative": {ticker: False for ticker in tickers},
+                "aggressive": {ticker: False for ticker in tickers},
+                "neutral": {ticker: False for ticker in tickers}
+            },
+            
+            # Investment debate states for each ticker
             "investment_debate_states": {
                 ticker: {
-                    "history": "[]",
+                    "history": "",
+                    "bull_history": "",
+                    "bear_history": "",
+                    "bull_crossex_history": "",
+                    "bear_crossex_history": "",
                     "current_response": "",
                     "judge_decision": "",
-                    "bull_history": "[]",
-                    "bear_history": "[]",
-                    "count": 0
-                } for ticker in tickers
+                    "count": 0,
+                }
+                for ticker in tickers
             },
+            
+            # Risk debate states for each ticker
             "risk_debate_states": {
                 ticker: {
-                    "history": "[]",
+                    "history": "",
+                    "risky_history": "",
+                    "safe_history": "",
+                    "neutral_history": "",
+                    "latest_speaker": "",
                     "current_risky_response": "",
                     "current_safe_response": "",
                     "current_neutral_response": "",
-                    "latest_speaker": "",
-                    "judge_decision": "",
                     "count": 0,
-                } for ticker in tickers
+                }
+                for ticker in tickers
             },
+            
+            # Individual reports for each ticker
             "individual_reports": {
                 ticker: {
                     "market_report": "",
-                    "fundamentals_report": "",
+                    "macroeconomic_report": "",
                     "sentiment_report": "",
                     "news_report": "",
+                    "fundamentals_report": "",
                     "investment_plan": "",
                     "trader_investment_plan": "",
                     "final_trade_decision": "",
                     "analysis_complete": False,
-                    "current_analysis_step": "market_analysis",
-                    "analysis_attempts": 0,
-                    "last_analysis_time": None
-                } for ticker in tickers
+                }
+                for ticker in tickers
             },
-            "portfolio_optimizer_decision": "",
-            "cross_ticker_correlations": {},
-            "sector_allocations": {},
-            "risk_metrics": {}
         }
 
     def get_graph_args(self) -> Dict[str, Any]:

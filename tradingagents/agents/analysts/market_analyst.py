@@ -5,40 +5,157 @@ from tradingagents.blackboard.utils import create_agent_blackboard
 
 
 def create_market_analyst(llm, toolkit):
+    def _analyze_single_ticker(ticker: str, current_date: str, toolkit, llm, memory):
+        """Analyze a single ticker and return the report and messages."""
+        # Blackboard integration
+        blackboard_agent = create_agent_blackboard("MA_001", "MarketAnalyst")
+        recent_analyses = blackboard_agent.get_analysis_reports(ticker=ticker)
+        
+        blackboard_context = ""
+        if recent_analyses:
+            blackboard_context += "\n\nRecent Market Analyses on Blackboard:\n"
+            for analysis in recent_analyses[-3:]:
+                content = analysis.get('content', {})
+                analysis_data = content.get('analysis', {})
+                if isinstance(analysis_data, dict):
+                    blackboard_context += f"- {analysis['sender'].get('role', 'Unknown')}: {analysis_data.get('recommendation', 'N/A')} (Confidence: {analysis_data.get('confidence', 'N/A')})\n"
 
-    def market_analyst_node(state):
+        # Get market data and perform analysis
+        curr_situation = f"Market analysis for {ticker} on {current_date}{blackboard_context}"
+        past_memories = []
+        past_memory_str = ""
+        if memory:
+            past_memories = memory.get_memories(curr_situation, n_matches=2)
+            past_memory_str = "\n\n".join([rec["recommendation"] for rec in past_memories])
+
+        # Create analysis chain
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are a professional market analyst providing comprehensive technical analysis.
+            
+Analyze the provided market data for {ticker} and create a detailed technical analysis report.
+Use all available indicators to provide insights on:
+- Price action and trends
+- Support and resistance levels  
+- Technical indicators (RSI, MACD, moving averages, etc.)
+- Volume analysis
+- Risk factors and opportunities
+
+Format your response as a structured analysis with clear sections and actionable insights.
+Include a summary table with key metrics and their interpretation.
+
+Current date: {current_date}
+Past relevant analysis: {past_memory_str}
+{blackboard_context}"""),
+            MessagesPlaceholder(variable_name="messages"),
+        ])
+
+        chain = prompt | llm
+        result = chain.invoke({
+            "messages": [("human", f"Provide technical analysis for {ticker}")],
+            "ticker": ticker,
+            "current_date": current_date,
+            "past_memory_str": past_memory_str,
+            "blackboard_context": blackboard_context
+        })
+
+        # Extract recommendation and confidence from response
+        report = getattr(result, 'content', '') or str(result)
+        recommendation = "Neutral"
+        confidence = "Medium"
+        
+        if "BUY" in report.upper():
+            recommendation = "Bullish"
+        elif "SELL" in report.upper():
+            recommendation = "Bearish"
+        if "HIGH" in report.upper() and "CONFIDENCE" in report.upper():
+            confidence = "High"
+        elif "LOW" in report.upper() and "CONFIDENCE" in report.upper():
+            confidence = "Low"
+            
+        # Post to blackboard
+        analysis_content = {
+            "ticker": ticker,
+            "recommendation": recommendation,
+            "confidence": confidence,
+            "analysis": report
+        }
+        blackboard_agent.post_analysis_report(
+            ticker=ticker,
+            analysis=analysis_content,
+            confidence=confidence
+        )
+
+        return {
+            "report": report,
+            "messages": [result],
+            "recommendation": recommendation,
+            "confidence": confidence
+        }
+
+    def market_analyst_node(state, memory=None):
         current_date = state["trade_date"]
         
-        # Handle both single ticker and multi-ticker modes
-        if "tickers" in state:
-            # Multi-ticker portfolio mode
+        # Handle both single ticker and multi-ticker portfolio modes
+        if "tickers" in state and state.get("tickers"):
+            # Multi-ticker portfolio mode - process ALL tickers that need market analysis
             tickers = state["tickers"]
-            current_ticker_index = state.get("current_ticker_index", 0)
+            individual_reports = state.get("individual_reports", {})
+            analyst_completion = state.get("analyst_completion", {})
+            market_completion = analyst_completion.get("market", {})
             
-            # Only analyze the current ticker, not all tickers
-            if current_ticker_index < len(tickers):
-                ticker = tickers[current_ticker_index]
-                company_name = ticker
-                is_portfolio_mode = True
-                
-                # Check if this ticker already has a complete market report
-                individual_reports = state.get("individual_reports", {})
-                if ticker in individual_reports:
-                    ticker_report = individual_reports[ticker]
-                    if ticker_report.get("analysis_complete", False) and ticker_report.get("market_report", ""):
-                        # This ticker is already analyzed, return existing report
-                        return {
-                            "messages": [],
-                            "market_report": ticker_report.get("market_report", ""),
-                            "individual_reports": individual_reports,
-                            "current_ticker_index": current_ticker_index
-                        }
-            else:
-                # All tickers analyzed, return empty result
+            # Find all tickers that need market analysis
+            tickers_to_process = [
+                ticker for ticker in tickers 
+                if not market_completion.get(ticker, False) and 
+                not individual_reports.get(ticker, {}).get("market_report", "")
+            ]
+            
+            if not tickers_to_process:
+                # All tickers already have market analysis, mark all as complete
+                updated_analyst_completion = {
+                    **analyst_completion,
+                    "market": {ticker: True for ticker in tickers}
+                }
                 return {
                     "messages": [],
                     "market_report": "All tickers already analyzed",
+                    "individual_reports": individual_reports,
+                    "analyst_completion": updated_analyst_completion
                 }
+            
+            # Process all tickers that need market analysis
+            all_reports = {}
+            all_messages = []
+            
+            for ticker in tickers_to_process:
+                print(f"🔍 Market Analyst processing {ticker}...")
+                
+                # Process this ticker
+                ticker_report = _analyze_single_ticker(ticker, current_date, toolkit, llm, memory or None)
+                all_reports[ticker] = ticker_report["report"]
+                all_messages.extend(ticker_report["messages"])
+                
+                # Update individual reports
+                if ticker not in individual_reports:
+                    individual_reports[ticker] = {}
+                individual_reports[ticker]["market_report"] = ticker_report["report"]
+            
+            # Mark all processed tickers as complete for market analysis
+            updated_market_completion = {**market_completion}
+            for ticker in tickers_to_process:
+                updated_market_completion[ticker] = True
+            
+            updated_analyst_completion = {
+                **analyst_completion,
+                "market": updated_market_completion
+            }
+            
+            return {
+                "messages": all_messages,
+                "market_report": f"Completed market analysis for: {', '.join(tickers_to_process)}",
+                "individual_reports": individual_reports,
+                "analyst_completion": updated_analyst_completion
+            }
         elif "company_of_interest" in state:
             # Single ticker mode
             ticker = state["company_of_interest"] 
@@ -249,18 +366,27 @@ Advanced Analysis:
                     state["individual_reports"][ticker] = {}
                 state["individual_reports"][ticker]["market_report"] = report
                 
-                # Mark as complete if we have a substantial report
-                if report and len(report.strip()) > 50:  # Ensure we have a meaningful report
-                    state["individual_reports"][ticker]["analysis_complete"] = True
-                else:
-                    # No substantial report yet, keep analysis incomplete
-                    state["individual_reports"][ticker]["analysis_complete"] = False
+                # DON'T mark as complete here - market analysis is just one step
+                # Completion will be determined by the conditional logic based on
+                # having market_report + investment_plan + final_trade_decision
+            
+            # Update analyst completion tracking for phase-based processing
+            analyst_completion = state.get("analyst_completion", {})
+            market_completion = analyst_completion.get("market", {})
+            updated_analyst_completion = {
+                **analyst_completion,
+                "market": {
+                    **market_completion,
+                    ticker: True
+                }
+            }
             
             return {
                 "messages": [result],
                 "market_report": report,
                 "individual_reports": state.get("individual_reports", {}),
-                "current_ticker_index": state.get("current_ticker_index", 0)
+                "current_ticker_index": state.get("current_ticker_index", 0),
+                "analyst_completion": updated_analyst_completion
             }
         else:
             # Single ticker mode

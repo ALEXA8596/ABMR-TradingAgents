@@ -5,109 +5,74 @@ from tradingagents.blackboard.utils import create_agent_blackboard
 
 
 def create_social_media_analyst(llm, toolkit):
-    def social_media_analyst_node(state):
-        current_date = state["trade_date"]
-        
-        # Handle both single ticker and multi-ticker modes
-        if "tickers" in state:
-            # Multi-ticker portfolio mode
-            tickers = state["tickers"]
-            ticker = tickers[0]  # Analyze first ticker for now
-            company_name = ticker
-            is_portfolio_mode = True
-        elif "company_of_interest" in state:
-            # Single ticker mode (backward compatibility)
-            ticker = state["company_of_interest"]
-            company_name = state["company_of_interest"]
-            is_portfolio_mode = False
-        else:
-            # Fallback - this shouldn't happen but let's handle it gracefully
-            print("Warning: No ticker information found in state")
-            return {
-                "messages": [],
-                "sentiment_report": "Error: No ticker information available",
-            }
-
+    def _analyze_single_ticker_social(ticker: str, current_date: str, toolkit, llm, memory):
+        """Analyze a single ticker for social media sentiment and return the report and messages."""
         # Blackboard integration
         blackboard_agent = create_agent_blackboard("SMA_001", "SocialMediaAnalyst")
-        # Read recent social media analysis reports for context
         recent_analyses = blackboard_agent.get_analysis_reports(ticker=ticker)
+        
         blackboard_context = ""
         if recent_analyses:
             blackboard_context += "\n\nRecent Social Media Analysis Reports on Blackboard:\n"
             for analysis in recent_analyses[-3:]:
                 content = analysis.get('content', {})
-                blackboard_context += f"- {analysis['sender'].get('role', 'Unknown')}: {content.get('recommendation', 'N/A')} (Confidence: {content.get('confidence', 'N/A')})\n"
+                analysis_data = content.get('analysis', {})
+                if isinstance(analysis_data, dict):
+                    blackboard_context += f"- {analysis['sender'].get('role', 'Unknown')}: {analysis_data.get('recommendation', 'N/A')} (Confidence: {analysis_data.get('confidence', 'N/A')})\n"
 
-        if toolkit.config["online_tools"]:
-            tools = [toolkit.get_stock_news_openai]
-        else:
-            tools = [
-                toolkit.get_reddit_stock_info,
-            ]
+        # Get social media data and perform analysis
+        curr_situation = f"Social media analysis for {ticker} on {current_date}{blackboard_context}"
+        past_memories = []
+        past_memory_str = ""
+        if memory:
+            past_memories = memory.get_memories(curr_situation, n_matches=2)
+            past_memory_str = "\n\n".join([rec["recommendation"] for rec in past_memories])
 
-        system_message = (
-            "You are a social media and company specific news researcher/analyst tasked with analyzing social media posts, recent company news, and public sentiment for a specific company over the past week. You will be given a company's name your objective is to write a comprehensive long report detailing your analysis, insights, and implications for traders and investors on this company's current state after looking at social media and what people are saying about that company, analyzing sentiment data of what people feel each day about the company, and looking at recent company news. Try to look at all sources possible from social media to sentiment to news. Do not simply state the trends are mixed, provide detailed and finegrained analysis and insights that may help traders make decisions."
-            + " Make sure to append a Markdown table at the end of the report to organize key points in the report, organized and easy to read."
-            + f"\n\nBlackboard Context:{blackboard_context}"
-        )
-
-        json_format = """
-                    {   
-                        "prefix": "...", // The prefix of the response. If previous messages contain FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL**, make sure to include it in your response too. Else, leave it empty.
-                        "content": "...", // The writeup of the content, with detailed analysis and insights
-                        "confidence": "", // The confidence of the response, a number between 1 and 100
-                        "decision": "", // the sentiment of social media as a scale from 1 to 100, where 1 is do not trade and 100 is trade
-                        "table": "" // A Markdown table with key points in the report, organized and easy to read
-                    }
-                    """
-
-
-        system_prompt = (
-            "You are a helpful AI assistant, collaborating with other assistants."
-            " Use the provided tools to progress towards answering the question."
-            " If you are unable to fully answer, that's OK; another assistant with different tools"
-            " will help where you left off. Execute what you can to make progress."
-            " If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable,"
-            " prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop."
-            " You have access to the following tools: {tool_names}.\n\n{system_message}\n\n"
-            "For your reference, the current date is {current_date}. The current company we want to analyze is {ticker}."
-            " Respond ONLY with a valid JSON object in the following format: {json_format}"
-        )
-
-
+        # Create analysis chain
         prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
+            ("system", """You are a professional social media analyst providing comprehensive sentiment analysis.
+            
+Analyze the social media sentiment for {ticker} and create a detailed report covering:
+- Reddit sentiment and discussions
+- Twitter/X sentiment trends
+- Social media volume and engagement
+- Key topics and themes
+- Sentiment shifts and timing
+- Impact on market sentiment
+
+Format your response as a structured analysis with clear sections and actionable insights.
+Include sentiment trends table with key metrics and confidence levels.
+
+Current date: {current_date}
+Past relevant analysis: {past_memory_str}
+{blackboard_context}"""),
             MessagesPlaceholder(variable_name="messages"),
         ])
 
-        prompt = prompt.partial(system_message=system_message)
-        prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
-        prompt = prompt.partial(current_date=current_date)
-        prompt = prompt.partial(ticker=ticker)
-        prompt = prompt.partial(json_format=json_format)
+        chain = prompt | llm
+        result = chain.invoke({
+            "messages": [("human", f"Provide social media sentiment analysis for {ticker}")],
+            "ticker": ticker,
+            "current_date": current_date,
+            "past_memory_str": past_memory_str,
+            "blackboard_context": blackboard_context
+        })
 
-        chain = prompt | llm.bind_tools(tools)
-
-        result = chain.invoke(state["messages"])
-
-        report = ""
-
-        if len(result.tool_calls) == 0:
-            report = result.content
-
-        # Post the generated report to the blackboard
-        # Extract recommendation and confidence heuristically
+        # Extract recommendation and confidence from response
+        report = getattr(result, 'content', '') or str(result)
         recommendation = "Neutral"
         confidence = "Medium"
-        if "BUY" in report.upper():
+        
+        if "BULLISH" in report.upper() or "POSITIVE" in report.upper():
             recommendation = "Bullish"
-        elif "SELL" in report.upper():
+        elif "BEARISH" in report.upper() or "NEGATIVE" in report.upper():
             recommendation = "Bearish"
         if "HIGH" in report.upper() and "CONFIDENCE" in report.upper():
             confidence = "High"
         elif "LOW" in report.upper() and "CONFIDENCE" in report.upper():
             confidence = "Low"
+            
+        # Post to blackboard
         analysis_content = {
             "ticker": ticker,
             "recommendation": recommendation,
@@ -120,24 +85,104 @@ def create_social_media_analyst(llm, toolkit):
             confidence=confidence
         )
 
-        # Handle portfolio mode by updating individual reports
-        if is_portfolio_mode:
-            # Update the individual reports for the ticker being analyzed
-            if "individual_reports" in state:
-                # Always mark the ticker as complete to prevent infinite loops
-                state["individual_reports"][ticker]["sentiment_report"] = report
+        return {
+            "report": report,
+            "messages": [result],
+            "recommendation": recommendation,
+            "confidence": confidence
+        }
+
+    def social_media_analyst_node(state, memory=None):
+        current_date = state["trade_date"]
+        
+        # Handle both single ticker and multi-ticker portfolio modes
+        if "tickers" in state and state.get("tickers"):
+            # Multi-ticker portfolio mode - process ALL tickers that need social media analysis
+            tickers = state["tickers"]
+            individual_reports = state.get("individual_reports", {})
+            analyst_completion = state.get("analyst_completion", {})
+            social_completion = analyst_completion.get("social", {})
             
+            # CRITICAL FIX: Check if we've already completed analysis for all tickers
+            all_complete = True
+            for ticker in tickers:
+                ticker_complete = social_completion.get(ticker, False)
+                has_sentiment_report = bool(individual_reports.get(ticker, {}).get("sentiment_report"))
+                if not ticker_complete or not has_sentiment_report:
+                    all_complete = False
+                    break
+            
+            if all_complete:
+                # All tickers already analyzed, return current state without re-analyzing
+                print(f"[DEBUG] Social media analysis already complete for all tickers: {tickers}")
+                # CRITICAL FIX: Return proper state with existing messages to maintain graph flow
+                return {
+                    "messages": state.get("messages", []),
+                    "individual_reports": individual_reports,
+                    "analyst_completion": analyst_completion,
+                    "sentiment_report": f"Social media analysis already complete for: {', '.join(tickers)}",
+                    # Ensure we don't lose any existing state
+                    "tickers": tickers,
+                    "trade_date": current_date
+                }
+            
+            # Process each ticker that needs social media analysis
+            all_messages = []  # Collect all messages from analysis
+            processed_tickers = []
+            
+            for ticker in tickers:
+                if not social_completion.get(ticker, False) or not individual_reports.get(ticker, {}).get("sentiment_report"):
+                    try:
+                        print(f"[DEBUG] Processing social media analysis for ticker: {ticker}")
+                        result = _analyze_single_ticker_social(ticker, current_date, toolkit, llm, memory)
+                        
+                        # Update individual reports
+                        if ticker not in individual_reports:
+                            individual_reports[ticker] = {}
+                        individual_reports[ticker]["sentiment_report"] = result["report"]
+                        
+                        # Collect messages from this analysis
+                        all_messages.extend(result["messages"])
+                        
+                        # Mark this ticker as complete for social media analysis
+                        social_completion[ticker] = True
+                        processed_tickers.append(ticker)
+                        
+                        print(f"[DEBUG] Completed social media analysis for ticker: {ticker}")
+                        
+                    except Exception as e:
+                        print(f"Error analyzing {ticker} for social media: {e}")
+                        # Mark as complete to avoid infinite loops
+                        social_completion[ticker] = True
+                        processed_tickers.append(ticker)
+            
+            # Update the analyst_completion state properly
+            updated_analyst_completion = {
+                **analyst_completion,
+                "social": social_completion
+            }
+            
+            # Update the state - MUST include messages for proper graph routing
             return {
-                "messages": [result],
-                "sentiment_report": report,
-                "individual_reports": state.get("individual_reports", {}),
-                "current_ticker_index": state.get("current_ticker_index", 0)
+                "messages": all_messages,  # ← This is what was missing!
+                "individual_reports": individual_reports,
+                "analyst_completion": updated_analyst_completion,
+                "sentiment_report": f"Completed social media analysis for: {', '.join(processed_tickers)}"
             }
         else:
             # Single ticker mode
-            return {
-                "messages": [result],
-                "sentiment_report": report,
-            }
+            company_name = state.get("company_of_interest", "SPY")
+            try:
+                result = _analyze_single_ticker_social(company_name, current_date, toolkit, llm, memory)
+                return {
+                    "sentiment_report": result["report"],
+                    "messages": result["messages"]
+                }
+            except Exception as e:
+                print(f"Error in social media analysis: {e}")
+                return {
+                    "sentiment_report": f"Error in social media analysis: {e}",
+                    "messages": []
+                }
 
     return social_media_analyst_node

@@ -169,12 +169,18 @@ Consider all the insights from analysts, risk managers, research managers, and c
 
         # Return appropriate structure based on mode
         if is_portfolio_mode:
+            # Preserve existing ticker data and update with new fields
+            existing_ticker_data = individual_reports.get(ticker, {})
+            updated_ticker_data = {
+                **existing_ticker_data,  # Preserve all existing data
+                "trader_investment_plan": result.content,
+                "final_trade_decision": trade_action
+            }
+            
             return {
                 "messages": [result],
                 "individual_reports": {
-                    ticker: {
-                        "trader_investment_plan": result.content
-                    }
+                    ticker: updated_ticker_data
                 },
                 "sender": name,
             }
@@ -182,6 +188,7 @@ Consider all the insights from analysts, risk managers, research managers, and c
             return {
                 "messages": [result],
                 "trader_investment_plan": result.content,
+                "final_trade_decision": trade_action,
                 "sender": name,
             }
 

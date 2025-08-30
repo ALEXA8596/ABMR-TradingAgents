@@ -193,15 +193,21 @@ Do not execute any trades or call tools. Produce a clear BUY/SELL/HOLD recommend
 
         # store serializable message content instead of the full chain result object
         if is_portfolio_mode:
+            # Preserve existing ticker data and update with new fields
+            existing_ticker_data = individual_reports.get(ticker, {})
+            updated_ticker_data = {
+                **existing_ticker_data,  # Preserve all existing data
+                "final_trade_decision": response_text,
+                "analysis_complete": True  # Mark analysis as complete
+            }
+            
             return {
                 "messages": state.get("messages", []) + [{"role": "assistant", "content": response_text}],
                 "risk_debate_states": {
                     ticker: new_risk_debate_state
                 },
                 "individual_reports": {
-                    ticker: {
-                        "final_trade_decision": response_text
-                    }
+                    ticker: updated_ticker_data
                 },
             }
         else:

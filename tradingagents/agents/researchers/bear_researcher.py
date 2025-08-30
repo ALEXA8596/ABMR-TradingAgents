@@ -6,262 +6,176 @@ from tradingagents.agents.utils.debate_utils import increment_debate_count, get_
 
 
 def create_bear_researcher(llm, memory):
+    def _research_single_ticker_bear(ticker: str, state, llm, memory):
+        """Research a single ticker from bear perspective and return the analysis."""
+        # Extract reports for this ticker
+        individual_reports = state.get("individual_reports", {})
+        ticker_reports = individual_reports.get(ticker, {})
+        
+        market_research_report = ticker_reports.get("market_report", "")
+        sentiment_report = ticker_reports.get("sentiment_report", "")
+        news_report = ticker_reports.get("news_report", "")
+        fundamentals_report = ticker_reports.get("fundamentals_report", "")
+        macroeconomic_report = ticker_reports.get("macroeconomic_report", "")
+
+        # Get debate state for this ticker
+        investment_debate_states = state.get("investment_debate_states", {})
+        investment_debate_state = investment_debate_states.get(ticker, {})
+        
+        history = investment_debate_state.get("history", "")
+        bear_history = investment_debate_state.get("bear_history", "")
+        current_response = investment_debate_state.get("current_response", "")
+
+        # Blackboard integration
+        blackboard_agent = create_agent_blackboard("BR_001", "BearResearcher")
+        recent_debates = blackboard_agent.get_debate_comments(topic=f"{ticker} Investment Debate")
+        
+        blackboard_context = ""
+        if recent_debates:
+            blackboard_context += "\n\nRecent Debate Comments on Blackboard:\n"
+            for debate in recent_debates[-3:]:
+                content = debate.get('content', {})
+                blackboard_context += f"- {debate['sender'].get('role', 'Unknown')}: {content.get('position', 'N/A')} - {content.get('argument', 'N/A')[:100]}...\n"
+
+        # Prepare context for bear research
+        curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}\n\n{macroeconomic_report}"
+        past_memories = memory.get_memories(curr_situation, n_matches=2)
+        past_memory_str = "\n\n".join([rec["recommendation"] for rec in past_memories])
+
+        # Build bear argument prompt
+        system_message = f"""As a Bear Researcher, your role is to develop and present the strongest possible bearish case for {ticker}. 
+        
+Your analysis should focus on:
+- Risks and challenges analysis
+- Competitive weaknesses identification
+- Negative market indicators
+- Overvaluation concerns
+- Negative sentiment trends
+- Counter-arguments to bullish claims
+
+Use the provided analysis reports to build compelling bear arguments with specific evidence and reasoning.
+Present your case as a structured argument with confidence levels and supporting data.
+
+Past relevant insights: {past_memory_str}
+{blackboard_context}"""
+
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": f"Develop a comprehensive bearish research case for {ticker} based on the available analysis."}
+        ]
+
+        response = llm.invoke(messages)
+        response_text = getattr(response, 'content', '') or str(response)
+
+        # Post to blackboard
+        blackboard_agent.post_debate_comment(
+            topic=f"{ticker} Investment Debate",
+            position="Bearish",
+            argument=response_text
+        )
+
+        return {
+            "response": response_text,
+            "messages": [response],
+            "ticker": ticker
+        }
+
     def bear_node(state) -> dict:
         # Handle both single ticker and portfolio modes
-        if "tickers" in state:
-            # Multi-ticker portfolio mode
+        if "tickers" in state and state.get("tickers"):
+            # Multi-ticker portfolio mode - process ALL tickers that need bear research
             tickers = state["tickers"]
-            ticker = tickers[0]  # Analyze first ticker for now
-            is_portfolio_mode = True
+            researcher_completion = state.get("researcher_completion", {})
+            bear_completion = researcher_completion.get("bear", {})
             
-            # Extract ticker-specific debate state from portfolio structure
-            investment_debate_states = state.get("investment_debate_states", {})
-            investment_debate_state = investment_debate_states.get(ticker, {})
+            # Find all tickers that need bear research
+            tickers_to_process = [
+                ticker for ticker in tickers 
+                if not bear_completion.get(ticker, False)
+            ]
             
-            # Also extract ticker-specific risk debate state
-            risk_debate_states = state.get("risk_debate_states", {})
-            risk_debate_state = risk_debate_states.get(ticker, {})
+            if not tickers_to_process:
+                # All tickers already have bear research, mark all as complete
+                updated_researcher_completion = {
+                    **researcher_completion,
+                    "bear": {ticker: True for ticker in tickers}
+                }
+                return {
+                    "messages": [],
+                    "researcher_completion": updated_researcher_completion
+                }
             
+            # Process all tickers that need bear research
+            all_responses = {}
+            all_messages = []
+            updated_debate_states = {}
+            
+            for ticker in tickers_to_process:
+                print(f"🐻 Bear Researcher processing {ticker}...")
+                
+                # Process this ticker
+                ticker_research = _research_single_ticker_bear(ticker, state, llm, memory)
+                all_responses[ticker] = ticker_research["response"]
+                all_messages.extend(ticker_research["messages"])
+                
+                # Update debate state for this ticker
+                investment_debate_states = state.get("investment_debate_states", {})
+                current_debate_state = investment_debate_states.get(ticker, {})
+                
+                # Increment debate count and update state
+                new_count = current_debate_state.get("count", 0) + 1
+                updated_debate_states[ticker] = {
+                    **current_debate_state,
+                    "history": current_debate_state.get("history", "") + f"\n\nBear Researcher Round {new_count}: {ticker_research['response']}",
+                    "bear_history": current_debate_state.get("bear_history", "") + f"\n\nRound {new_count}: {ticker_research['response']}",
+                    "current_response": ticker_research["response"],
+                    "count": new_count
+                }
+            
+            # Mark all processed tickers as complete for bear research
+            updated_bear_completion = {**bear_completion}
+            for ticker in tickers_to_process:
+                updated_bear_completion[ticker] = True
+            
+            updated_researcher_completion = {
+                **researcher_completion,
+                "bear": updated_bear_completion
+            }
+            
+            return {
+                "messages": all_messages,
+                "investment_debate_states": updated_debate_states,
+                "researcher_completion": updated_researcher_completion
+            }
         elif "company_of_interest" in state:
             # Single ticker mode (backward compatibility)
             ticker = state["company_of_interest"]
-            is_portfolio_mode = False
             
-            # Use single ticker debate states
+            # Process single ticker with simplified logic
+            ticker_research = _research_single_ticker_bear(ticker, state, llm, memory)
+            
+            # Update single ticker debate state
             investment_debate_state = state.get("investment_debate_state", {})
-            risk_debate_state = state.get("risk_debate_state", {})
+            new_count = investment_debate_state.get("count", 0) + 1
+            
+            updated_investment_debate_state = {
+                **investment_debate_state,
+                "history": investment_debate_state.get("history", "") + f"\n\nBear Researcher Round {new_count}: {ticker_research['response']}",
+                "bear_history": investment_debate_state.get("bear_history", "") + f"\n\nRound {new_count}: {ticker_research['response']}",
+                "current_response": ticker_research["response"],
+                "count": new_count
+            }
+            
+            return {
+                "messages": ticker_research["messages"],
+                "investment_debate_state": updated_investment_debate_state
+            }
         else:
             # Fallback - this shouldn't happen but let's handle it gracefully
             print("Warning: No ticker information found in state")
             return {
+                "messages": [],
                 "investment_plan": "Error: No ticker information available",
             }
-
-        # Now we have the correct debate state for the current ticker
-        history = investment_debate_state.get("history", "[]")
-        bear_history = investment_debate_state.get("bear_history", "[]")
-
-        current_response = investment_debate_state.get("current_response", "")
-        
-        # Extract reports based on mode
-        if is_portfolio_mode:
-            individual_reports = state.get("individual_reports", {})
-            ticker_reports = individual_reports.get(ticker, {})
-            market_research_report = ticker_reports.get("market_report", "")
-            sentiment_report = ticker_reports.get("sentiment_report", "")
-            news_report = ticker_reports.get("news_report", "")
-            fundamentals_report = ticker_reports.get("fundamentals_report", "")
-        else:
-            market_research_report = state.get("market_report", "")
-            sentiment_report = state.get("sentiment_report", "")
-            news_report = state.get("news_report", "")
-            fundamentals_report = state.get("fundamentals_report", "")
-
-        # Blackboard integration
-        blackboard_agent = create_agent_blackboard("BER_001", "BearResearcher")
-        
-        # Read recent analyst reports for context
-        recent_analyses = blackboard_agent.get_analysis_reports(ticker=ticker)
-        blackboard_context = ""
-        if recent_analyses:
-            blackboard_context += "\n\nRecent Analyst Reports on Blackboard:\n"
-            for analysis in recent_analyses[-3:]:  # Last 3 analyses
-                content = analysis.get('content', {})
-                analysis_data = content.get('analysis', {})
-                if isinstance(analysis_data, dict):
-                    blackboard_context += f"- {analysis['sender'].get('role', 'Unknown')}: {analysis_data.get('recommendation', 'N/A')} (Confidence: {analysis_data.get('confidence', 'N/A')})\n"
-
-        # Read full debate context for multi-round debates
-        debate_round = investment_debate_state.get("count", 0) + 1
-        recent_debate = blackboard_agent.get_debate_comments(topic=f"{ticker} Investment Debate")
-        debate_context = ""
-        if recent_debate:
-            debate_context += f"\n\nDEBATE ROUND {debate_round} - Previous Debate Context:\n"
-            for comment in recent_debate[-6:]:  # Last 6 comments for context (3 agents x 2 rounds)
-                content = comment.get('content', {})
-                debate_context += f"- {comment['sender'].get('role', 'Unknown')}: {content.get('position', 'N/A')} - {content.get('argument', 'N/A')[:200]}...\n"
-
-        # Read research arguments for context
-        research_args = blackboard_agent.get_research_arguments(ticker=ticker)
-        research_context = ""
-        if research_args:
-            research_context += f"\n\nPrevious Research Arguments:\n"
-            for arg in research_args[-2:]:  # Last 2 arguments
-                content = arg.get('content', {})
-                research_context += f"- {arg['sender'].get('role', 'Unknown')}: {content.get('position', 'N/A')} - {content.get('argument', 'N/A')[:150]}...\n"
-
-        curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
-        past_memories = memory.get_memories(curr_situation, n_matches=2)
-
-        past_memory_str = ""
-        for i, rec in enumerate(past_memories, 1):
-            past_memory_str += rec["recommendation"] + "\n\n"
-            
-        json_format = """{
-  "arguments": [{
-      "title": "...", // Short title for the argument
-      "content": "...", // Detailed content of the argument
-      "source": "...", // Source of the information (e.g., "Market Research Report")
-      "confidence": "..." // Confidence level in the argument (1-100)
-  }, ...],
-  "risks": [{
-      "title": "...",
-      "content": "...",
-      "source": "...",
-      "confidence": "..."
-  }, ...],
-  "counterpoints": [{
-      "title": "...",
-      "content": "...",
-      "source": "...",
-      "confidence": "..."
-    }, ...]
-}"""
-
-        prompt = f"""As the Bearish Research Analyst, your role is to identify and articulate the risks, challenges, and potential downsides of investing in the company. You should focus on valuation concerns, competitive threats, market risks, and negative catalysts.
-
-DEBATE ROUND {debate_round}: This is round {debate_round} of the investment debate. If this is round 1, provide your initial bearish position. If this is a later round, build upon your previous arguments and directly address the bullish analyst's counter-arguments from the previous round.
-
-{blackboard_context}
-{debate_context}
-
-Current Market Situation:
-Market Research: {market_research_report}
-Social Media Sentiment: {sentiment_report}
-News Analysis: {news_report}
-Fundamentals: {fundamentals_report}
-
-Your task is to:
-1. Analyze the market conditions and company fundamentals
-2. Build a compelling bearish case with specific evidence
-3. Address potential bullish arguments proactively
-4. Provide concrete examples and data points
-5. Consider the debate context and previous arguments
-6. Maintain a cautious but data-driven tone
-
-Focus on:
-- Valuation concerns and overvaluation risks
-- Competitive threats and market challenges
-- Negative market indicators and trends
-- Counter-arguments to bullish concerns
-- Evidence from provided data and research
-
-Respond in the following JSON format:
-{json_format}"""
-
-        response = llm.invoke(prompt)
-
-        # Extract confidence from response
-        confidence = "Medium"
-        response_text = response.content.upper()
-        if "HIGH" in response_text and "CONFIDENCE" in response_text:
-            confidence = "High"
-        elif "LOW" in response_text and "CONFIDENCE" in response_text:
-            confidence = "Low"
-
-        # Extract evidence sources from response
-        evidence_sources = []
-        if "RISK" in response_text:
-            evidence_sources.append("Risk Analysis")
-        if "FUNDAMENTAL" in response_text:
-            evidence_sources.append("Fundamental Analysis")
-        if "TECHNICAL" in response_text:
-            evidence_sources.append("Technical Analysis")
-        if "NEWS" in response_text:
-            evidence_sources.append("News Analysis")
-        if "SENTIMENT" in response_text:
-            evidence_sources.append("Sentiment Analysis")
-        if not evidence_sources:
-            evidence_sources = ["Market Analysis"]
-
-        # Determine reply_to for threading
-        reply_to = None
-        if recent_debate:
-            # Reply to the last bull comment if it exists
-            bull_comments = [c for c in recent_debate if c.get('content', {}).get('position') == 'Bullish']
-            if bull_comments:
-                reply_to = bull_comments[-1].get('message_id')
-
-        # Post debate comment to blackboard
-        blackboard_agent.post_debate_comment(
-            topic=f"{ticker} Investment Debate",
-            position="Bearish",
-            argument=response.content,
-            reply_to=reply_to
-        )
-
-        # Post research argument to blackboard
-        blackboard_agent.post_research_argument(
-            ticker=ticker,
-            position="Bearish",
-            argument=response.content,
-            confidence=confidence,
-            evidence_sources=evidence_sources,
-            reply_to=reply_to
-        )
-
-        # Post research summary
-        key_points = [
-            "Risks and challenges analysis",
-            "Competitive weaknesses identification",
-            "Negative market indicators",
-            "Counter-arguments to bullish claims"
-        ]
-        blackboard_agent.post_research_summary(
-            ticker=ticker,
-            position="Bearish",
-            key_points=key_points,
-            conclusion=f"Bearish case for {ticker} based on risks and negative indicators.",
-            confidence=confidence
-        )
-
-        argument = f"Bear Analyst: {response.content}"
-
-        # Get current debate round information
-        round_info = get_debate_round_info(state, ticker)
-        current_round = round_info["round"]
-        current_step = round_info["step_name"]
-        
-        # Parse history fields as JSON arrays
-        try:
-            history_list = json.loads(history) if history else []
-        except Exception:
-            history_list = []
-        
-        try:
-            bear_history_list = json.loads(bear_history) if bear_history else []
-        except Exception:
-            bear_history_list = []
-        
-        # Append new argument
-        history_list.append(argument)
-        bear_history_list.append(argument)
-
-        new_investment_debate_state = {
-            "history": json.dumps(history_list),
-            "bear_history": json.dumps(bear_history_list),
-            "bull_history": investment_debate_state.get("bull_history", "[]"),
-            "current_response": argument,
-            "judge_decision": investment_debate_state.get("judge_decision", ""),
-            "count": investment_debate_state.get("count", 0),  # Keep current count
-        }
-
-        # Increment the count for the next step
-        if is_portfolio_mode:
-            # In portfolio mode, update the ticker-specific state
-            updated_state = {
-                "investment_debate_states": {
-                    ticker: new_investment_debate_state
-                }
-            }
-            # Increment the count manually since increment_debate_count expects single ticker mode
-            updated_state["investment_debate_states"][ticker]["count"] = new_investment_debate_state["count"] + 1
-        else:
-            # Single ticker mode - use the existing logic
-            updated_state = {"investment_debate_state": new_investment_debate_state}
-            updated_state = increment_debate_count(updated_state)
-        
-        # Return the complete state update
-        return updated_state
 
     return bear_node

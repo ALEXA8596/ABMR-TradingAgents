@@ -3,150 +3,147 @@ import json
 from tradingagents.agents.utils.debate_utils import increment_debate_count, get_debate_round_info
 
 def create_bull_crossex_researcher(llm, memory):
-    def bull_crossex_node(state) -> dict:
-        print(f"[DEBUG] Bull Cross Examination Researcher executing...")
-        investment_debate_state = state["investment_debate_state"]
+    def _crossex_single_ticker_bull(ticker: str, state, llm, memory):
+        """Cross-examine bear arguments for a single ticker and return the analysis."""
+        # Get debate state for this ticker
+        investment_debate_states = state.get("investment_debate_states", {})
+        investment_debate_state = investment_debate_states.get(ticker, {})
         
         # Get the bear's response from bear_history
-        bear_history = investment_debate_state.get("bear_history", "[]")
-        try:
-            bear_history_list = json.loads(bear_history) if bear_history else []
-            bear_response = bear_history_list[-1] if bear_history_list else "No bear response available"
-        except Exception:
-            bear_response = "No bear response available"
+        bear_history = investment_debate_state.get("bear_history", "")
+        bear_response = bear_history.split("Bear Researcher Round")[-1].strip() if bear_history else "No bear response available"
         
-        bull_history = investment_debate_state.get("bull_history", "[]")
-        
-        print(f"[DEBUG] Current count: {investment_debate_state.get('count', 0)}")
-        print(f"[DEBUG] Bear response: {str(bear_response)[:100]}...")
-        
-        # Get current debate round information
-        round_info = get_debate_round_info(state, ticker)
-        current_round = round_info["round"]
-        current_step = round_info["step_name"]
-        
-        print(f"[DEBUG] Round: {current_round}, Step: {current_step}")
+        bull_history = investment_debate_state.get("bull_history", "")
+        bull_response = bull_history.split("Bull Researcher Round")[-1].strip() if bull_history else "No bull response available"
 
-        # Get past memory for context
-        curr_situation = f"Bear Response: {bear_response}"
-        past_memories = memory.get_memories(curr_situation, n_matches=2)
-        past_memory_str = ""
-        for i, rec in enumerate(past_memories, 1):
-            past_memory_str += rec["recommendation"] + "\n\n"
-
-        # Blackboard integration
-        from tradingagents.blackboard.utils import create_agent_blackboard
-        blackboard_agent = create_agent_blackboard("BCR_001", "BullCrossExaminer")
-        
-        ticker = state["company_of_interest"]
-        
-        json_format = """{
-  "questions": [{
-      "question": "...", // Question for the bear researcher
-      "source": "..." // Source of the question (e.g., "Bear Response")
-  }, ...],
-  "rebuttals": [{
-      "rebuttal": "...", // Rebuttal to the bear's argument
-      "source": "..." // Source of the rebuttal (e.g., "Bear Response")
-  }, ...]
-}"""
-
-        # Read full debate context for multi-round debates
-        debate_round = investment_debate_state.get("count", 0) + 1
-        recent_debate = blackboard_agent.get_debate_comments(topic=f"{ticker} Investment Debate")
-        debate_context = ""
-        if recent_debate:
-            debate_context += f"\n\nDEBATE ROUND {debate_round} - Previous Debate Context:\n"
-            for comment in recent_debate[-6:]:  # Last 6 comments for context (3 agents x 2 rounds)
-                content = comment.get('content', {})
-                debate_context += f"- {comment['sender'].get('role', 'Unknown')}: {content.get('position', 'N/A')} - {content.get('argument', 'N/A')[:200]}...\n"
-
-        prompt = f"""As the Bull Cross-Examination Researcher, your role is to critically examine the bearish analyst's arguments, identify weaknesses, and provide compelling counter-arguments. You should focus on challenging assumptions, highlighting inconsistencies, and strengthening the bullish case.
-
-DEBATE ROUND {debate_round}: This is round {debate_round} of the investment debate. You are cross-examining the bearish analyst's arguments from the previous round.
-
-{debate_context}
-
-Bearish Analyst's Response to Cross-Examine:
-{bear_response}
-
-Current Market Situation:
-Market Research: {state.get('market_report', 'N/A')}
-Social Media Sentiment: {state.get('sentiment_report', 'N/A')}
-News Analysis: {state.get('news_report', 'N/A')}
-Fundamentals: {state.get('fundamentals_report', 'N/A')}
+        # Create cross-examination prompt
+        system_message = f"""As a Bull Cross-Examiner, your role is to critically analyze and challenge the Bear Researcher's arguments for {ticker}.
 
 Your task is to:
-1. Critically analyze the bearish analyst's arguments
-2. Identify logical fallacies, weak evidence, or flawed assumptions
-3. Provide compelling counter-arguments with specific evidence
-4. Strengthen the overall bullish case
-5. Consider the broader debate context
-6. Maintain a critical but constructive tone
+- Identify weaknesses in the bearish case
+- Present counter-evidence to bear arguments  
+- Highlight overlooked bullish factors
+- Question the validity of bearish assumptions
+- Strengthen the overall bullish position
 
-Focus on:
-- Questioning the validity of bearish claims
-- Highlighting contradictory evidence
-- Identifying overlooked positive factors
-- Providing alternative interpretations
-- Strengthening bullish arguments
+Use logical reasoning and evidence-based arguments to cross-examine the bear case.
+Present your cross-examination as structured questions and rebuttals.
 
-Respond in the following JSON format:
-{json_format}"""
+Bear Arguments to Examine: {bear_response}
+Bull Arguments to Support: {bull_response}"""
 
-        response = llm.invoke(prompt)
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": f"Cross-examine the bear arguments for {ticker} and present compelling rebuttals."}
+        ]
 
-        # Parse the JSON from the LLM response
-        crossex_json = {}
-        try:
-            crossex_json = json.loads(response.content)
-        except Exception:
-            pass
-        
-        # Format the cross-examination for posting
-        crossex_text = f"Cross-Examination of Bear Arguments:\n\n"
-        
-        if "questions" in crossex_json:
-            crossex_text += "**Questions:**\n"
-            for i, q in enumerate(crossex_json["questions"], 1):
-                crossex_text += f"{i}. {q.get('question', 'N/A')}\n"
-            crossex_text += "\n"
-        
-        if "rebuttals" in crossex_json:
-            crossex_text += "**Rebuttals:**\n"
-            for i, r in enumerate(crossex_json["rebuttals"], 1):
-                crossex_text += f"{i}. {r.get('rebuttal', 'N/A')}\n"
-        
-        # Post debate comment to blackboard
-        blackboard_agent.post_debate_comment(
-            topic=f"{ticker} Investment Debate - Cross Examination",
-            position="Bullish Cross-Examination",
-            argument=crossex_text,
-            reply_to=None  # Could link to bear's last comment if needed
-        )
+        response = llm.invoke(messages)
+        response_text = getattr(response, 'content', '') or str(response)
 
-        # Parse Bull History and append the new cross-examination
-        try:
-            bull_history_list = json.loads(bull_history)
-        except Exception:
-            bull_history_list = []
-        bull_history_list.append(crossex_json)
-        new_bull_history = json.dumps(bull_history_list)
-
-        # Update the debate state
-        new_investment_debate_state = {
-            "history": investment_debate_state.get("history", "[]"),
-            "bull_history": new_bull_history,
-            "bear_history": investment_debate_state.get("bear_history", "[]"),
-            "current_response": crossex_json,
-            "judge_decision": investment_debate_state.get("judge_decision", ""),
-            "count": investment_debate_state.get("count", 0),  # Keep current count
+        return {
+            "response": response_text,
+            "messages": [response],
+            "ticker": ticker
         }
 
-        # Increment the count for the next step
-        updated_state = {"investment_debate_state": new_investment_debate_state}
-        updated_state = increment_debate_count(updated_state)
+    def bull_crossex_node(state) -> dict:
+        print(f"[DEBUG] Bull Cross Examination Researcher executing...")
         
-        return updated_state
+        # Handle both single ticker and portfolio modes
+        if "tickers" in state and state.get("tickers"):
+            # Multi-ticker portfolio mode - process ALL tickers that need bull cross-examination
+            tickers = state["tickers"]
+            researcher_completion = state.get("researcher_completion", {})
+            bull_crossex_completion = researcher_completion.get("bull_crossex", {})
+            
+            # Find all tickers that need bull cross-examination
+            tickers_to_process = [
+                ticker for ticker in tickers 
+                if not bull_crossex_completion.get(ticker, False)
+            ]
+            
+            if not tickers_to_process:
+                # All tickers already have bull cross-examination, mark all as complete
+                updated_researcher_completion = {
+                    **researcher_completion,
+                    "bull_crossex": {ticker: True for ticker in tickers}
+                }
+                return {
+                    "messages": [],
+                    "researcher_completion": updated_researcher_completion
+                }
+            
+            # Process all tickers that need bull cross-examination
+            all_responses = {}
+            all_messages = []
+            updated_debate_states = {}
+            
+            for ticker in tickers_to_process:
+                print(f"🐂⚖️ Bull Cross-Examiner processing {ticker}...")
+                
+                # Process this ticker
+                ticker_crossex = _crossex_single_ticker_bull(ticker, state, llm, memory)
+                all_responses[ticker] = ticker_crossex["response"]
+                all_messages.extend(ticker_crossex["messages"])
+                
+                # Update debate state for this ticker
+                investment_debate_states = state.get("investment_debate_states", {})
+                current_debate_state = investment_debate_states.get(ticker, {})
+                
+                # Increment debate count and update state
+                new_count = current_debate_state.get("count", 0) + 1
+                updated_debate_states[ticker] = {
+                    **current_debate_state,
+                    "history": current_debate_state.get("history", "") + f"\n\nBull Cross-Ex Round {new_count}: {ticker_crossex['response']}",
+                    "bull_crossex_history": current_debate_state.get("bull_crossex_history", "") + f"\n\nRound {new_count}: {ticker_crossex['response']}",
+                    "current_response": ticker_crossex["response"],
+                    "count": new_count
+                }
+            
+            # Mark all processed tickers as complete for bull cross-examination
+            updated_bull_crossex_completion = {**bull_crossex_completion}
+            for ticker in tickers_to_process:
+                updated_bull_crossex_completion[ticker] = True
+            
+            updated_researcher_completion = {
+                **researcher_completion,
+                "bull_crossex": updated_bull_crossex_completion
+            }
+            
+            return {
+                "messages": all_messages,
+                "investment_debate_states": updated_debate_states,
+                "researcher_completion": updated_researcher_completion
+            }
+        elif "company_of_interest" in state:
+            # Single ticker mode (backward compatibility)
+            ticker = state["company_of_interest"]
+            
+            # Process single ticker with simplified logic
+            ticker_crossex = _crossex_single_ticker_bull(ticker, state, llm, memory)
+            
+            # Update single ticker debate state
+            investment_debate_state = state.get("investment_debate_state", {})
+            new_count = investment_debate_state.get("count", 0) + 1
+            
+            updated_investment_debate_state = {
+                **investment_debate_state,
+                "history": investment_debate_state.get("history", "") + f"\n\nBull Cross-Ex Round {new_count}: {ticker_crossex['response']}",
+                "bull_crossex_history": investment_debate_state.get("bull_crossex_history", "") + f"\n\nRound {new_count}: {ticker_crossex['response']}",
+                "current_response": ticker_crossex["response"],
+                "count": new_count
+            }
+            
+            return {
+                "messages": ticker_crossex["messages"],
+                "investment_debate_state": updated_investment_debate_state
+            }
+        else:
+            # Fallback - this shouldn't happen but let's handle it gracefully
+            print("Warning: No ticker information found in state")
+            return {
+                "messages": [],
+                "investment_plan": "Error: No ticker information available",
+            }
 
     return bull_crossex_node

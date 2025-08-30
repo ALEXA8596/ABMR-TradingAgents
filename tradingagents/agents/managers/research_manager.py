@@ -133,9 +133,30 @@ Respond ONLY with a valid JSON object in the following format:
             "count": investment_debate_state.get("count", 0),
         }
 
-        return {
-            "investment_debate_state": new_investment_debate_state,
-            "investment_plan": response.content,
-        }
+        if is_portfolio_mode:
+            # Multi-ticker portfolio mode
+            # Preserve existing ticker data and update with new fields
+            individual_reports = state.get("individual_reports", {})
+            existing_ticker_data = individual_reports.get(ticker, {})
+            updated_ticker_data = {
+                **existing_ticker_data,  # Preserve all existing data
+                "investment_plan": response.content
+            }
+            
+            return {
+                "investment_debate_states": {
+                    ticker: new_investment_debate_state
+                },
+                "individual_reports": {
+                    ticker: updated_ticker_data
+                },
+                "investment_plan": response.content,  # For backward compatibility
+            }
+        else:
+            # Single ticker mode
+            return {
+                "investment_debate_state": new_investment_debate_state,
+                "investment_plan": response.content,
+            }
 
     return research_manager_node

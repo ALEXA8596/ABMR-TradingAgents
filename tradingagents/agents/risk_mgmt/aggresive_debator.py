@@ -4,225 +4,180 @@ from tradingagents.blackboard.utils import create_agent_blackboard
 
 
 def create_risky_debator(llm):
+    def _analyze_single_ticker_aggressive(ticker: str, state, llm):
+        """Analyze a single ticker from aggressive risk perspective and return the analysis."""
+        # Extract reports for this ticker
+        individual_reports = state.get("individual_reports", {})
+        ticker_reports = individual_reports.get(ticker, {})
+        
+        market_research_report = ticker_reports.get("market_report", "")
+        sentiment_report = ticker_reports.get("sentiment_report", "")
+        news_report = ticker_reports.get("news_report", "")
+        fundamentals_report = ticker_reports.get("fundamentals_report", "")
+        trader_decision = ticker_reports.get("trader_investment_plan", "")
+
+        # Get risk debate state for this ticker
+        risk_debate_states = state.get("risk_debate_states", {})
+        risk_debate_state = risk_debate_states.get(ticker, {})
+        
+        current_safe_response = risk_debate_state.get("current_safe_response", "")
+        current_neutral_response = risk_debate_state.get("current_neutral_response", "")
+
+        # Blackboard integration
+        blackboard_agent = create_agent_blackboard("RD_001", "RiskyDebator")
+        recent_risk_debates = blackboard_agent.get_risk_assessments(ticker=ticker)
+        
+        blackboard_context = ""
+        if recent_risk_debates:
+            blackboard_context += "\n\nRecent Risk Assessments on Blackboard:\n"
+            for assessment in recent_risk_debates[-3:]:
+                content = assessment.get('content', {})
+                blackboard_context += f"- {assessment['sender'].get('role', 'Unknown')}: {content.get('risk_level', 'N/A')} - {content.get('recommendation', 'N/A')[:100]}...\n"
+
+        # Create aggressive risk analysis prompt
+        system_message = f"""As an Aggressive Risk Analyst, your role is to provide a growth-focused, opportunity-seeking perspective on {ticker}.
+
+Your analysis should focus on:
+- Maximizing return potential
+- Capitalizing on market opportunities
+- Aggressive position sizing for growth
+- Risk tolerance for higher returns
+- Market momentum exploitation
+- Growth-oriented strategies
+
+Analyze the trader's decision and market conditions from an aggressive risk-taking perspective.
+Provide specific recommendations for maximizing return potential while accepting calculated risks.
+
+Market Research: {market_research_report}
+Sentiment Report: {sentiment_report}
+News Report: {news_report}
+Fundamentals: {fundamentals_report}
+Trader Decision: {trader_decision}
+
+Conservative Analyst Response: {current_safe_response}
+Neutral Analyst Response: {current_neutral_response}
+
+{blackboard_context}"""
+
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": f"Provide aggressive risk analysis for {ticker} focusing on maximizing return potential and growth opportunities."}
+        ]
+
+        response = llm.invoke(messages)
+        response_text = getattr(response, 'content', '') or str(response)
+
+        # Post to blackboard
+        # Extract risk factors from the response (simplified approach)
+        risk_factors = ["Growth potential", "Market volatility", "Aggressive strategy"]
+        
+        blackboard_agent.post_risk_assessment(
+            ticker=ticker,
+            risk_level="Aggressive",
+            risk_factors=risk_factors,
+            recommendation=response_text
+        )
+
+        return {
+            "response": response_text,
+            "messages": [response],
+            "ticker": ticker
+        }
+
     def risky_node(state) -> dict:
         # Handle both single ticker and multi-ticker portfolio modes
         if "tickers" in state and state.get("tickers"):
-            # Multi-ticker portfolio mode - use the first ticker for now
-            ticker = state["tickers"][0] if state["tickers"] else "SPY"
-            is_portfolio_mode = True
+            # Multi-ticker portfolio mode - process ALL tickers that need aggressive risk analysis
+            tickers = state["tickers"]
+            risk_completion = state.get("risk_completion", {})
+            aggressive_completion = risk_completion.get("aggressive", {})
             
-            # Extract ticker-specific data from portfolio structure
-            individual_reports = state.get("individual_reports", {})
-            ticker_reports = individual_reports.get(ticker, {})
+            # Find all tickers that need aggressive risk analysis
+            tickers_to_process = [
+                ticker for ticker in tickers 
+                if not aggressive_completion.get(ticker, False)
+            ]
             
-            risk_debate_states = state.get("risk_debate_states", {})
-            risk_debate_state = risk_debate_states.get(ticker, {})
+            if not tickers_to_process:
+                # All tickers already have aggressive risk analysis, mark all as complete
+                updated_risk_completion = {
+                    **risk_completion,
+                    "aggressive": {ticker: True for ticker in tickers}
+                }
+                return {
+                    "messages": [],
+                    "risk_completion": updated_risk_completion
+                }
             
-            history = risk_debate_state.get("history", "[]")
-            risky_history = risk_debate_state.get("risky_history", "[]")
-            current_safe_response = risk_debate_state.get("current_safe_response", "")
-            current_neutral_response = risk_debate_state.get("current_neutral_response", "")
+            # Process all tickers that need aggressive risk analysis
+            all_responses = {}
+            all_messages = []
+            updated_debate_states = {}
             
-            market_research_report = ticker_reports.get("market_report", "")
-            sentiment_report = ticker_reports.get("sentiment_report", "")
-            news_report = ticker_reports.get("news_report", "")
-            fundamentals_report = ticker_reports.get("fundamentals_report", "")
-            trader_decision = ticker_reports.get("trader_investment_plan", "")
+            for ticker in tickers_to_process:
+                print(f"⚡ Aggressive Risk Analyst processing {ticker}...")
+                
+                # Process this ticker
+                ticker_analysis = _analyze_single_ticker_aggressive(ticker, state, llm)
+                all_responses[ticker] = ticker_analysis["response"]
+                all_messages.extend(ticker_analysis["messages"])
+                
+                # Update risk debate state for this ticker
+                risk_debate_states = state.get("risk_debate_states", {})
+                current_debate_state = risk_debate_states.get(ticker, {})
+                
+                # Update risk debate state
+                updated_debate_states[ticker] = {
+                    **current_debate_state,
+                    "history": current_debate_state.get("history", "") + f"\n\nAggressive Risk Analysis: {ticker_analysis['response']}",
+                    "risky_history": current_debate_state.get("risky_history", "") + f"\n\nAnalysis: {ticker_analysis['response']}",
+                    "current_risky_response": ticker_analysis["response"],
+                    "count": current_debate_state.get("count", 0) + 1  # FIXED: Increment count in multi-ticker mode
+                }
             
+            # Mark all processed tickers as complete for aggressive risk analysis
+            updated_aggressive_completion = {**aggressive_completion}
+            for ticker in tickers_to_process:
+                updated_aggressive_completion[ticker] = True
+            
+            updated_risk_completion = {
+                **risk_completion,
+                "aggressive": updated_aggressive_completion
+            }
+            
+            return {
+                "messages": all_messages,
+                "risk_debate_states": updated_debate_states,
+                "risk_completion": updated_risk_completion
+            }
         elif "company_of_interest" in state:
             # Single ticker mode (backward compatibility)
             ticker = state.get("company_of_interest", "UNKNOWN")
-            is_portfolio_mode = False
             
-            risk_debate_state = state["risk_debate_state"]
-            history = risk_debate_state.get("history", "[]")
-            risky_history = risk_debate_state.get("risky_history", "[]")
-            current_safe_response = risk_debate_state.get("current_safe_response", "")
-            current_neutral_response = risk_debate_state.get("current_neutral_response", "")
+            # Process single ticker with simplified logic
+            ticker_analysis = _analyze_single_ticker_aggressive(ticker, state, llm)
             
-            market_research_report = state.get("market_report", "")
-            sentiment_report = state.get("sentiment_report", "")
-            news_report = state.get("news_report", "")
-            fundamentals_report = state.get("fundamentals_report", "")
-            trader_decision = state.get("trader_investment_plan", "")
+            # Update single ticker risk debate state
+            risk_debate_state = state.get("risk_debate_state", {})
+            
+            updated_risk_debate_state = {
+                **risk_debate_state,
+                "history": risk_debate_state.get("history", "") + f"\n\nAggressive Risk Analysis: {ticker_analysis['response']}",
+                "risky_history": risk_debate_state.get("risky_history", "") + f"\n\nAnalysis: {ticker_analysis['response']}",
+                "current_risky_response": ticker_analysis["response"],
+                "count": risk_debate_state.get("count", 0) + 1
+            }
+            
+            return {
+                "messages": ticker_analysis["messages"],
+                "risk_debate_state": updated_risk_debate_state
+            }
         else:
             # Fallback - this shouldn't happen but let's handle it gracefully
             print("Warning: No ticker information found in state")
             return {
+                "messages": [],
                 "current_risky_response": "Error: No ticker information available",
             }
-
-        json_format = """{
-  "content": "...", // Overall writeup of the response
-  "arguments": [{
-      "title": "...", // Short title for the argument
-      "content": "...", // Detailed content of the argument
-      "source": "...", // Source of the information (e.g., "Market Research Report")
-      "confidence": "..." // Confidence level in the argument (1-100)
-  }, ...],
-  "counterpoints": [{
-      "title": "...",
-      "content": "...",
-      "source": "...",
-      "confidence": "...",
-      "target": "..." // The agent you are responding to, e.g. "Conservative", "Neutral"
-    }, ...]
-}"""
-
-        # Blackboard integration
-        blackboard_agent = create_agent_blackboard("ARD_001", "AggressiveRiskManager")
-        
-        # Read trader decisions from blackboard
-        trader_decisions = blackboard_agent.get_investment_decisions(ticker=ticker)
-        trader_context = ""
-        if trader_decisions:
-            trader_context += "\n\nRecent Trader Decisions on Blackboard:\n"
-            for decision in trader_decisions[-2:]:  # Last 2 decisions
-                content = decision.get('content', {})
-                trader_context += f"- Trader Decision: {content.get('decision', 'N/A')} (Confidence: {content.get('confidence', 'N/A')})\n"
-
-        # Read analyst reports for context
-        recent_analyses = blackboard_agent.get_analysis_reports(ticker=ticker)
-        analyst_context = ""
-        if recent_analyses:
-            analyst_context += "\n\nRecent Analyst Reports on Blackboard:\n"
-            for analysis in recent_analyses[-3:]:  # Last 3 analyses
-                content = analysis.get('content', {})
-                analysis_data = content.get('analysis', {})
-                if isinstance(analysis_data, dict):
-                    analyst_context += f"- {analysis['sender'].get('role', 'Unknown')}: {analysis_data.get('recommendation', 'N/A')} (Confidence: {analysis_data.get('confidence', 'N/A')})\n"
-
-        # Read recent risk debate comments
-        risk_debate_round = risk_debate_state["count"] + 1
-        recent_risk_debate = blackboard_agent.get_risk_debate_comments(topic=f"{ticker} Risk Debate")
-        risk_debate_context = ""
-        if recent_risk_debate:
-            risk_debate_context += f"\n\nRISK DEBATE ROUND {risk_debate_round} - Previous Risk Debate Context:\n"
-            for comment in recent_risk_debate[-6:]:  # Last 6 comments for context (3 agents x 2 rounds)
-                content = comment.get('content', {})
-                risk_debate_context += f"- {comment['sender'].get('role', 'Unknown')}: {content.get('stance', 'N/A')} - {content.get('argument', 'N/A')[:200]}...\n"
-
-        prompt = f"""As the Aggressive Risk Manager, your role is to advocate for taking calculated risks and pursuing aggressive investment strategies. You should focus on growth opportunities, market momentum, and the potential for outsized returns while acknowledging but downplaying risks.
-
-RISK DEBATE ROUND {risk_debate_round}: This is round {risk_debate_round} of the risk debate. If this is round 1, provide your initial aggressive risk position. If this is a later round, build upon your previous arguments and directly address the conservative and neutral analysts' counter-arguments from the previous round.
-
-{trader_context}
-{analyst_context}
-{risk_debate_context}
-
-Here is the trader's decision:
-{trader_decision}
-
-Current Market Situation:
-Market Research: {market_research_report}
-Social Media Sentiment: {sentiment_report}
-News Analysis: {news_report}
-Fundamentals: {fundamentals_report}
-
-Your task is to:
-1. Analyze the trader's decision and market conditions
-2. Build a compelling case for aggressive risk-taking
-3. Address concerns raised by conservative and neutral analysts in previous rounds
-4. Provide specific evidence and reasoning for aggressive approaches
-5. Consider the debate context and previous arguments
-6. Maintain a confident and optimistic tone
-
-Focus on:
-- Growth potential and market opportunities
-- Momentum and trend following strategies
-- Risk-reward optimization
-- Counter-arguments to conservative concerns
-- Evidence supporting aggressive positions
-
-Respond in the following JSON format:
-{json_format}"""
-
-        response = llm.invoke(prompt)
-
-        # Extract confidence from response
-        confidence = "Medium"
-        response_text = response.content.upper()
-        if "HIGH" in response_text and "CONFIDENCE" in response_text:
-            confidence = "High"
-        elif "LOW" in response_text and "CONFIDENCE" in response_text:
-            confidence = "Low"
-
-        # Extract risk level from response
-        risk_level = "High"
-        if "LOW" in response_text and "RISK" in response_text:
-            risk_level = "Low"
-        elif "MEDIUM" in response_text and "RISK" in response_text:
-            risk_level = "Medium"
-
-        # Determine reply_to for threading
-        reply_to = None
-        if recent_risk_debate:
-            # Reply to the last conservative or neutral comment if it exists
-            other_comments = [c for c in recent_risk_debate if c.get('content', {}).get('stance') in ['Conservative', 'Neutral']]
-            if other_comments:
-                reply_to = other_comments[-1].get('message_id')
-
-        # Post risk debate comment to blackboard
-        blackboard_agent.post_risk_debate_comment(
-            topic=f"{ticker} Risk Debate",
-            stance="Aggressive",
-            argument=response.content,
-            confidence=confidence,
-            reply_to=reply_to
-        )
-
-        # Post risk position to blackboard
-        blackboard_agent.post_risk_position(
-            ticker=ticker,
-            stance="Aggressive",
-            confidence=confidence,
-            reasoning=f"Aggressive risk stance for {ticker} based on growth potential and market opportunities.",
-            risk_level=risk_level
-        )
-
-        # Post risk recommendation to blackboard
-        actions = [
-            "Increase position size for higher returns",
-            "Focus on growth-oriented strategies",
-            "Embrace market volatility for opportunities",
-            "Maintain aggressive stance despite risks"
-        ]
-        blackboard_agent.post_risk_recommendation(
-            ticker=ticker,
-            stance="Aggressive",
-            actions=actions,
-            rationale=f"Aggressive recommendations for {ticker} to maximize growth potential and market opportunities.",
-            priority="High"
-        )
-
-        argument = f"Risky Analyst: {response.content}"
-
-        new_risk_debate_state = {
-            "history": history + "\n" + argument,
-            "risky_history": risky_history + "\n" + argument,
-            "safe_history": risk_debate_state.get("safe_history", ""),
-            "neutral_history": risk_debate_state.get("neutral_history", ""),
-            "latest_speaker": "Risky",
-            "current_risky_response": argument,
-            "current_safe_response": risk_debate_state.get("current_safe_response", ""),
-            "current_neutral_response": risk_debate_state.get(
-                "current_neutral_response", ""
-            ),
-            "count": risk_debate_state["count"] + 1,
-        }
-
-        if is_portfolio_mode:
-            return {
-                "risk_debate_states": {
-                    ticker: new_risk_debate_state
-                },
-                "individual_reports": {
-                    ticker: {
-                        "current_risky_response": argument
-                    }
-                },
-            }
-        else:
-            return {"risk_debate_state": new_risk_debate_state}
 
     return risky_node

@@ -29,6 +29,7 @@ class GraphSetup:
         invest_judge_memory,
         risk_manager_memory,
         portfolio_optimizer_memory,
+        market_memory,
         conditional_logic: ConditionalLogic,
     ):
         """Initialize with required components."""
@@ -43,6 +44,7 @@ class GraphSetup:
         self.risk_manager_memory = risk_manager_memory
         self.conditional_logic = conditional_logic
         self.portfolio_optimizer_memory = portfolio_optimizer_memory
+        self.market_memory = market_memory
 
     def setup_graph(
         self, selected_analysts=["market", "social", "news", "fundamentals", "macroeconomic"]
@@ -146,27 +148,6 @@ class GraphSetup:
             self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
         )
         
-        portfolio_optimizer_node = create_portfolio_optimizer(
-            self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
-        )
-
-        # Add multi-ticker portfolio optimizer
-        multi_ticker_portfolio_optimizer_node = create_multi_ticker_portfolio_optimizer(
-            self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
-        )
-        
-        # Add portfolio finalization node (simple pass-through for now)
-        portfolio_finalization_node = lambda state: {
-            "portfolio_finalized": True, 
-            "final_decision": "Multi-ticker portfolio analysis completed",
-            "portfolio_summary": {
-                "tickers_analyzed": state.get("tickers", []),
-                "total_tickers": len(state.get("tickers", [])),
-                "optimization_completed": True,
-                "timestamp": datetime.now().isoformat()
-            }
-        }
-
         # Create workflow
         workflow = StateGraph(AgentState)
 
@@ -191,42 +172,32 @@ class GraphSetup:
         workflow.add_node("Risk Judge", risk_manager_node)
         workflow.add_node("tools_Risk Judge", tool_nodes["riskJudge"])
         workflow.add_node("Quant Options Manager", quant_options_manager_node)
-        workflow.add_node("Portfolio Optimizer", portfolio_optimizer_node)
-        workflow.add_node("Multi-Ticker Portfolio Optimizer", multi_ticker_portfolio_optimizer_node)
-        workflow.add_node("Portfolio Finalization", portfolio_finalization_node)
 
         # Define edges
         # Start with the first analyst
         first_analyst = selected_analysts[0]
         workflow.add_edge(START, f"{first_analyst.capitalize()} Analyst")
 
-        # Connect analysts in sequence
+        # Connect analysts in sequence with FIXED routing logic
         for i, analyst_type in enumerate(selected_analysts):
             current_analyst = f"{analyst_type.capitalize()} Analyst"
             current_tools = f"tools_{analyst_type}"
             current_clear = f"Msg Clear {analyst_type.capitalize()}"
 
-            # Add conditional edges for current analyst
-            if analyst_type == "market":
-                # Special handling for Market Analyst to support multi-ticker routing
-                workflow.add_conditional_edges(
-                    current_analyst,
-                    self.conditional_logic.should_continue_market,
-                    {
-                        current_tools: current_tools,
-                        current_clear: current_clear,
-                        "Multi-Ticker Portfolio Optimizer": "Multi-Ticker Portfolio Optimizer"  # Multi-ticker return path
-                    },
-                )
-            else:
-                # Standard analyst routing
-                workflow.add_conditional_edges(
-                    current_analyst,
-                    getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
-                    [current_tools, current_clear],
-                )
+            # CRITICAL FIX: Remove the infinite loop edge
+            # The analyst should only go to tools if needed, then to clear message
+            # No edge from tools back to analyst to prevent infinite loops
             
-            workflow.add_edge(current_tools, current_analyst)
+            # Standard analyst routing for all analyst types
+            workflow.add_conditional_edges(
+                current_analyst,
+                getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
+                [current_tools, current_clear],
+            )
+            
+            # FIXED: Add edge from tools to clear message, NOT back to analyst
+            # This prevents infinite loops while maintaining proper tool execution
+            workflow.add_edge(current_tools, current_clear)
 
             # Connect to next analyst or to Bull Researcher if this is the last analyst
             if i < len(selected_analysts) - 1:
@@ -283,17 +254,17 @@ class GraphSetup:
             self.conditional_logic.should_continue_risk_analysis,
             {
                 "Safe Analyst": "Safe Analyst",
-                "Neutral Analyst": "Neutral Analyst",  # RESTORED
-                "Risk Judge": "Risk Judge",
+                "Neutral Analyst": "Neutral Analyst", 
+                "Risk Judge": "Risk Judge"
             },
         )
         workflow.add_conditional_edges(
             "Safe Analyst",
             self.conditional_logic.should_continue_risk_analysis,
             {
-                "Risky Analyst": "Risky Analyst",
-                "Neutral Analyst": "Neutral Analyst",  # RESTORED
-                "Risk Judge": "Risk Judge",
+                "Safe Analyst": "Safe Analyst",
+                "Neutral Analyst": "Neutral Analyst",
+                "Risk Judge": "Risk Judge"
             },
         )
         # Add neutral analyst conditional edge - RESTORED
@@ -301,7 +272,9 @@ class GraphSetup:
             "Neutral Analyst",
             self.conditional_logic.should_continue_risk_analysis,
             {
-                "Risk Judge": "Risk Judge",
+                "Safe Analyst": "Safe Analyst",
+                "Neutral Analyst": "Neutral Analyst", 
+                "Risk Judge": "Risk Judge"
             },
         )
 
@@ -309,32 +282,8 @@ class GraphSetup:
             "Risk Judge", "Quant Options Manager",
         )
         
-        # Add conditional routing for portfolio vs single ticker mode
-        workflow.add_conditional_edges(
-            "Quant Options Manager",
-            self.conditional_logic.should_continue_portfolio_flow,
-            {
-                "Portfolio Optimizer": "Portfolio Optimizer",
-                "Multi-Ticker Portfolio Optimizer": "Multi-Ticker Portfolio Optimizer",
-            },
-        )
-        
-        # Single ticker flow - goes directly to END
-        workflow.add_edge("Portfolio Optimizer", END)
-        
-        # Multi-ticker portfolio flow - needs to process all tickers before ending
-        workflow.add_conditional_edges(
-            "Multi-Ticker Portfolio Optimizer",
-            self.conditional_logic.should_continue_ticker_analysis,
-            {
-                "next_ticker": "Multi-Ticker Portfolio Optimizer",  # Loop back to continue processing
-                "portfolio_optimization": "Portfolio Finalization",
-                "continue_analysis": "Market Analyst",  # Route back to analysis flow
-            },
-        )
-        
-        # Portfolio finalization leads to END
-        workflow.add_edge("Portfolio Finalization", END)
+        # Portfolio optimization - goes directly to END
+        workflow.add_edge("Quant Options Manager", END)
 
         # Compile and return
         return workflow.compile()

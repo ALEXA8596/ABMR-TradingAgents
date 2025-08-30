@@ -24,15 +24,21 @@ import pandas as pd
 
 def _is_ticker_analysis_complete(ticker_reports):
     """Check if a ticker's analysis is complete."""
-    # Consider ticker complete if it has any non-empty analysis reports (even if data retrieval failed)
-    has_any_analysis = any([
-        ticker_reports.get("market_report") and ticker_reports.get("market_report") != "",
-        ticker_reports.get("fundamentals_report") and ticker_reports.get("fundamentals_report") != "",
-        ticker_reports.get("sentiment_report") and ticker_reports.get("sentiment_report") != "",
-        ticker_reports.get("news_report") and ticker_reports.get("news_report") != ""
-    ])
+    # Require the ticker to have completed the full analysis pipeline
+    # At minimum, we need market analysis and either fundamentals OR a complete flag
+    has_market_report = bool(ticker_reports.get("market_report"))
+    has_investment_plan = bool(ticker_reports.get("investment_plan"))
+    has_final_decision = bool(ticker_reports.get("final_trade_decision"))
+    is_marked_complete = ticker_reports.get("analysis_complete", False)
     
-    return has_any_analysis or ticker_reports.get("analysis_complete", False)
+    # For a ticker to be considered complete, it needs either:
+    # 1. Explicit completion flag, OR
+    # 2. Market report AND investment plan AND final decision
+    is_complete = is_marked_complete or (has_market_report and has_investment_plan and has_final_decision)
+    
+    print(f"[DEBUG] Multi-ticker analysis check: market={has_market_report}, plan={has_investment_plan}, decision={has_final_decision}, complete_flag={is_marked_complete} -> {is_complete}")
+    
+    return is_complete
 
 
 def create_multi_ticker_portfolio_optimizer(llm, memory, toolkit):
