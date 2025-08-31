@@ -475,11 +475,17 @@ class Toolkit:
             data["portfolio"] = {}
         holdings = data["portfolio"].get(ticker, {"totalAmount": 0})
         # Fetch current price
+        # Prefer offline CSV price for the specific date; fallback to yfinance date-bounded
         try:
-            stock = yf.Ticker(ticker)
-            current_price = float(stock.history(period="1d")["Close"].iloc[-1])
+            current_price = float(interface.get_price_from_csv(ticker, date))
         except Exception:
-            current_price = 0.0
+            try:
+                start = datetime.strptime(date, "%Y-%m-%d")
+                end = start + timedelta(days=1)
+                hist = yf.Ticker(ticker).history(start=start, end=end)
+                current_price = float(hist["Close"].iloc[-1]) if not hist.empty else 0.0
+            except Exception:
+                current_price = 0.0
         # Update liquidity if present
         if "liquid" not in data:
             data["liquid"] = 100000
@@ -489,8 +495,21 @@ class Toolkit:
             cost = quantity * current_price
             if quantity == 0:
                 return f"Insufficient liquidity to buy {ticker}."
-        holdings["totalAmount"] = int(holdings.get("totalAmount", 0)) + int(quantity)
+        prev_qty = int(holdings.get("totalAmount", 0))
+        buy_qty = int(quantity)
+        new_qty = prev_qty + buy_qty
+        holdings["totalAmount"] = new_qty
         holdings["last_price"] = current_price
+        # Maintain entry price (volume-weighted average cost)
+        try:
+            prev_entry = float(holdings.get("entry_price", 0.0) or 0.0)
+            if current_price > 0 and buy_qty > 0:
+                if prev_qty > 0 and prev_entry > 0:
+                    holdings["entry_price"] = ((prev_entry * prev_qty) + (current_price * buy_qty)) / max(new_qty, 1)
+                else:
+                    holdings["entry_price"] = current_price
+        except Exception:
+            holdings["entry_price"] = current_price
         data["portfolio"][ticker] = holdings
         data["liquid"] = max(0, data.get("liquid", 0) - cost)
         with open(portfolio_path, "w") as f:
@@ -520,12 +539,19 @@ class Toolkit:
             data["portfolio"] = {}
         holdings = data["portfolio"].get(ticker, {"totalAmount": 0})
         # update last_price if available
+        # Update last_price using offline CSV where possible
         try:
-            stock = yf.Ticker(ticker)
-            current_price = float(stock.history(period="1d")["Close"].iloc[-1])
+            current_price = float(interface.get_price_from_csv(ticker, date))
             holdings["last_price"] = current_price
         except Exception:
-            pass
+            try:
+                start = datetime.strptime(date, "%Y-%m-%d")
+                end = start + timedelta(days=1)
+                hist = yf.Ticker(ticker).history(start=start, end=end)
+                if not hist.empty:
+                    holdings["last_price"] = float(hist["Close"].iloc[-1])
+            except Exception:
+                pass
         data["portfolio"][ticker] = holdings
         with open(portfolio_path, "w") as f:
             json.dump(data, f, indent=2)
@@ -561,13 +587,30 @@ class Toolkit:
         if quantity <= 0:
             return "Quantity must be positive."
         sell_qty = min(quantity, current_shares)
+        # Prefer offline CSV price for the specific date; fallback to yfinance date-bounded
         try:
-            stock = yf.Ticker(ticker)
-            current_price = float(stock.history(period="1d")["Close"].iloc[-1])
+            current_price = float(interface.get_price_from_csv(ticker, date))
         except Exception:
-            current_price = 0.0
-        holdings["totalAmount"] = int(current_shares - sell_qty)
+            try:
+                start = datetime.strptime(date, "%Y-%m-%d")
+                end = start + timedelta(days=1)
+                hist = yf.Ticker(ticker).history(start=start, end=end)
+                current_price = float(hist["Close"].iloc[-1]) if not hist.empty else 0.0
+            except Exception:
+                current_price = 0.0
+        remaining = int(current_shares - sell_qty)
+        prev_qty = int(current_shares)
+        holdings["totalAmount"] = remaining
         holdings["last_price"] = current_price
+        # Entry price rules:
+        # - If crossing from >=0 to <0, set entry_price to current_price (short entry)
+        # - If already short and selling more (increasing absolute short), keep existing entry_price
+        # - If covering to zero, clear entry_price
+        prev_entry = float(holdings.get("entry_price", 0.0) or 0.0)
+        if prev_qty >= 0 and remaining < 0:
+            holdings["entry_price"] = current_price
+        elif remaining == 0:
+            holdings["entry_price"] = 0.0
         data["portfolio"][ticker] = holdings
         data["liquid"] = data.get("liquid", 0) + sell_qty * current_price
         with open(portfolio_path, "w") as f:

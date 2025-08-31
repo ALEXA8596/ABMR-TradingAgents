@@ -1,0 +1,39 @@
+{
+  "portfolio": {
+    "AAPL": {
+      "totalAmount": -77,
+      "last_price": 214.15695190429688,
+      "entry_price": 214.15695190429688
+    },
+    "AMZN": {
+      "totalAmount": -76,
+      "last_price": 227.47000122070312,
+      "entry_price": 227.47000122070312
+    },
+    "GOOG": {
+      "totalAmount": -79,
+      "last_price": 192.11000061035156,
+      "entry_price": 192.11000061035156
+    },
+    "META": {
+      "totalAmount": -29,
+      "last_price": 704.8099975585938,
+      "entry_price": 704.8099975585938
+    },
+    "NVDA": {
+      "totalAmount": -179,
+      "last_price": 167.02999877929688,
+      "entry_price": 167.02999877929688
+    }
+  },
+  "liquid": 199292.35514831543,
+  "portfolio_value": 100000.0,
+  "cash": 199292.35514831543,
+  "buying_power": 199292.35514831543,
+  "daily_return": 0.0,
+  "cumulative_return": 0.0,
+  "drawdown": 0.0,
+  "rolling_sharpe": 0.0,
+  "rolling_sortino": 0.0,
+  "rolling_calmar": 0.0
+}

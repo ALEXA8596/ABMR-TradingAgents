@@ -1,0 +1,47 @@
+{
+  "portfolio": {
+    "AAPL": {
+      "totalAmount": 51,
+      "last_price": 213.9072265625,
+      "entry_price": 213.9072265625
+    },
+    "AMZN": {
+      "totalAmount": 113,
+      "last_price": 228.2899932861328,
+      "entry_price": 228.2899932861328
+    },
+    "GOOG": {
+      "totalAmount": 53,
+      "last_price": 191.50999450683594,
+      "entry_price": 191.50999450683594
+    },
+    "META": {
+      "totalAmount": 36,
+      "last_price": 713.5800170898438,
+      "entry_price": 713.5800170898438
+    },
+    "NVDA": {
+      "totalAmount": 151,
+      "last_price": 170.77999877929688,
+      "entry_price": 170.77999877929688
+    }
+  },
+  "liquid": 746.0014343261719,
+  "metrics": {
+    "as_of": "2025-07-22",
+    "total_return": 0.0,
+    "max_drawdown": 0.0,
+    "rolling_sharpe": 0.0,
+    "rolling_sortino": 0.0,
+    "rolling_calmar": 0.0
+  },
+  "portfolio_value": 99078.72937011719,
+  "cash": 746.0014343261719,
+  "buying_power": 746.0014343261719,
+  "daily_return": -0.009212706298828033,
+  "cumulative_return": -0.009212706298828033,
+  "drawdown": -0.009212706298828033,
+  "rolling_sharpe": -0.7071066726408266,
+  "rolling_sortino": -0.49999994572713713,
+  "rolling_calmar": -0.9999998914542743
+}

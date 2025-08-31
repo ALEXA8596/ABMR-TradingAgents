@@ -4,7 +4,7 @@ import json
 import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
@@ -45,12 +45,22 @@ def _extract_action_and_rationale(final_state, final_decision) -> Tuple[str, str
             action = "HOLD"
         rationale = ""
         if isinstance(final_state, dict):
+            # Prefer explicit final rationale
             rationale = final_state.get("final_trade_rationale") or ""
-            po = final_state.get("portfolio_optimization_state") or {}
-            if isinstance(po, dict):
-                exec_info = po.get("execution") or {}
-                if exec_info:
-                    rationale = (rationale + "\n" if rationale else "") + f"Optimizer Execution: {exec_info}"
+            # Fallbacks: trader plan text, investment plan, or condensed analyst reports
+            if not rationale:
+                plan_txt = str(final_state.get("trader_investment_plan") or final_state.get("investment_plan") or "")
+                if plan_txt.strip():
+                    rationale = plan_txt.strip()
+            if not rationale:
+                parts = []
+                for key, label in [("market_report", "Market"), ("news_report", "News"), ("fundamentals_report", "Fundamentals"), ("sentiment_report", "Sentiment")]:
+                    txt = str(final_state.get(key) or "").strip()
+                    if txt:
+                        # Take first 300 chars per section to avoid blank rationales
+                        parts.append(f"{label}: {txt[:300]}")
+                if parts:
+                    rationale = " \n".join(parts)
         return action, rationale
     except Exception:
         return str(final_decision), ""
@@ -76,11 +86,18 @@ def run_ticker(ticker: str, date_str: str, out_date_dir: Path, config: Dict, deb
     # Serialize graph init to avoid concurrent collection creation in memories
     # Provide unique memory suffix to avoid collection name clashes
     config = {**config, "memory_suffix": f"{ticker}_{date_str}"}
-    with GRAPH_INIT_LOCK:
-        graph = TradingAgentsGraph(debug=debug, config=config)
-    print(f"🚀 {ticker} {date_str} starting")
-    final_state, final_decision = graph.propagate(ticker, date_str)
-    action, rationale = _extract_action_and_rationale(final_state, final_decision)
+    try:
+        with GRAPH_INIT_LOCK:
+            graph = TradingAgentsGraph(debug=debug, config=config)
+        print(f"🚀 {ticker} {date_str} starting")
+        final_state, final_decision = graph.propagate(ticker, date_str)
+        action, rationale = _extract_action_and_rationale(final_state, final_decision)
+    except Exception as e:
+        # Ensure a per-ticker file is still written even if the graph fails
+        action = "HOLD"
+        rationale = f"Error during analysis: {e}"
+        if show_trace:
+            traceback.print_exc()
     file_text = "\n".join([
         f"TICKER: {ticker}",
         f"DATE: {date_str}",
@@ -100,6 +117,7 @@ def run_batch5_multithreaded(
     deep_copy_config: bool = True,
     fail_fast: bool = False,
     show_trace: bool = False,
+    reset_portfolio: bool = True,
 ):
     tickers = ["AAPL", "AMZN", "GOOG", "META", "NVDA"]
     out_date_dir = Path(out_root) / date_str
@@ -109,11 +127,12 @@ def run_batch5_multithreaded(
     print(f"🟢 Starting multithreaded batch-5 run for {date_str}: {', '.join(tickers)} | outdir={out_date_dir}")
     t0 = time.time()
 
-    # Reset portfolio for this run (positions-only schema)
+    # Reset portfolio only when requested (e.g., first day of a multi-day run)
     portfolio_path = (Path.cwd() / "testing" / "portfolio.json").resolve()
     portfolio_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(portfolio_path, 'w') as f:
-        json.dump({"portfolio": {}, "liquid": 100000}, f, indent=2)
+    if reset_portfolio or (not portfolio_path.exists()):
+        with open(portfolio_path, 'w') as f:
+            json.dump({"portfolio": {}, "liquid": 100000}, f, indent=2)
 
     decisions: Dict[str, str] = {}
 
@@ -172,7 +191,9 @@ def run_batch5_multithreaded(
                 prices[t] = float(data_interface.get_price_from_csv(t, d))
             except Exception:
                 try:
-                    hist = yf.Ticker(t).history(period="1d")
+                    start = datetime.strptime(d, "%Y-%m-%d")
+                    end = start + timedelta(days=1)
+                    hist = yf.Ticker(t).history(start=start, end=end)
                     prices[t] = float(hist['Close'].iloc[-1]) if not hist.empty else 0.0
                 except Exception:
                     prices[t] = 0.0
@@ -214,15 +235,30 @@ def run_batch5_multithreaded(
             buy_qty = min(delta, max_affordable)
             if buy_qty > 0:
                 cost = buy_qty * price
-                holdings["totalAmount"] = int(holdings.get("totalAmount", 0)) + buy_qty
+                prev_qty = int(holdings.get("totalAmount", 0))
+                new_qty = prev_qty + buy_qty
+                holdings["totalAmount"] = new_qty
                 holdings["last_price"] = price
+                # Entry price: set only on first entry; otherwise keep existing entry_price
+                prev_entry = float(holdings.get("entry_price", 0.0) or 0.0)
+                if prev_qty <= 0 or prev_entry <= 0:
+                    holdings["entry_price"] = price
                 data["liquid"] = float(data.get("liquid", 0.0)) - cost
         elif delta < 0:
             sell_qty = abs(delta)
             current_qty = int(holdings.get("totalAmount", 0))
-            holdings["totalAmount"] = current_qty - sell_qty
+            new_qty = current_qty - sell_qty
+            holdings["totalAmount"] = new_qty
             proceeds = sell_qty * price
             holdings["last_price"] = price
+            prev_entry = float(holdings.get("entry_price", 0.0) or 0.0)
+            # Short entry logic: if crossing from >=0 to <0, set entry_price to price
+            if current_qty >= 0 and new_qty < 0:
+                holdings["entry_price"] = price
+            # If already short and adding more (more negative), preserve original entry price
+            # If covering to zero, clear entry price
+            if new_qty == 0:
+                holdings["entry_price"] = 0.0
             data["liquid"] = float(data.get("liquid", 0.0)) + proceeds
         else:
             # HOLD: update last_price only
@@ -231,10 +267,28 @@ def run_batch5_multithreaded(
     with open(portfolio_path, 'w') as f:
         json.dump(data, f, indent=2)
 
-    # Snapshot now
+    # Snapshot now from persisted portfolio file but revalue positions with date-specific prices
+    try:
+        persisted = json.loads(portfolio_path.read_text(encoding="utf-8"))
+    except Exception:
+        persisted = data
+    # Revalue last_price for each holding using the date's close
+    for sym, info in list(persisted.get("portfolio", {}).items()):
+        try:
+            px = float(data_interface.get_price_from_csv(sym, date_str))
+        except Exception:
+            try:
+                start = datetime.strptime(date_str, "%Y-%m-%d")
+                end = start + timedelta(days=1)
+                hist = yf.Ticker(sym).history(start=start, end=end)
+                px = float(hist['Close'].iloc[-1]) if not hist.empty else float(info.get('last_price', 0.0) or 0.0)
+            except Exception:
+                px = float(info.get('last_price', 0.0) or 0.0)
+        info["last_price"] = px
+        persisted["portfolio"][sym] = info
     snap_path = out_date_dir / f"portfolio_snapshot_{date_str}.json"
     with open(snap_path, 'w') as f:
-        json.dump(data, f, indent=2)
+        json.dump(persisted, f, indent=2)
     print(f"📸 Portfolio snapshot saved -> {snap_path.as_posix()}")
 
     # Consolidated portfolio optimization based on decisions (summary)
@@ -292,8 +346,16 @@ def main():
                 deep_copy_config=not args.shallow_config,
                 fail_fast=args.fail_fast,
                 show_trace=args.trace,
+                reset_portfolio=(cur == start_dt),
             )
             cur += timedelta(days=1)
+        # Compute backtest statistics over the range
+        compute_backtest_statistics(
+            start_date=start_dt.strftime("%Y-%m-%d"),
+            end_date=end_dt.strftime("%Y-%m-%d"),
+            out_root=args.outdir,
+            model_name=DEFAULT_CONFIG.get("quick_think_llm", "unknown-model"),
+        )
     else:
         run_batch5_multithreaded(
             date_str=args.date,
@@ -303,6 +365,173 @@ def main():
             fail_fast=args.fail_fast,
             show_trace=args.trace,
         )
+
+
+def compute_backtest_statistics(start_date: str, end_date: str, out_root: str, model_name: str = "unknown-model") -> None:
+    """Compute per-day and rolling performance metrics from daily snapshots.
+
+    Metrics per day:
+    - daily_return
+    - cumulative_return (from first day)
+    - drawdown (relative to running peak)
+    - sharpe_per_day (standalone)
+    - sortino_per_day (standalone)
+    - calmar_per_day (standalone: daily_return / max(drawdown, eps))
+
+    Rolling (from start to that day):
+    - rolling_sharpe
+    - rolling_sortino
+    - rolling_calmar (cum_return / max_drawdown_so_far)
+
+    Output file: testing/[model][start]-[end]-statistics.json
+    """
+    def daterange(d0: datetime, d1: datetime) -> List[str]:
+        days = (d1 - d0).days
+        return [(d0 + timedelta(n)).strftime("%Y-%m-%d") for n in range(days + 1)]
+
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+    days = daterange(start_dt, end_dt)
+
+    # Load daily portfolio values from snapshots
+    values: Dict[str, float] = {}
+    for d in days:
+        snap_path = Path(out_root) / d / f"portfolio_snapshot_{d}.json"
+        if not snap_path.exists():
+            continue
+        try:
+            data = json.loads(snap_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        portfolio = data.get("portfolio", {}) if isinstance(data.get("portfolio"), dict) else {}
+        liquid = float(data.get("liquid", 0.0) or 0.0)
+        total = liquid
+        for t, info in portfolio.items():
+            qty = float(info.get("totalAmount", 0.0) or 0.0)
+            px = float(info.get("last_price", 0.0) or 0.0)
+            total += qty * px
+        values[d] = total
+
+    # Compute daily returns
+    ordered_days = [d for d in days if d in values]
+    if not ordered_days:
+        return
+    ordered_days.sort()
+    first_val = values[ordered_days[0]]
+    eps = 1e-9
+    daily_returns: Dict[str, float] = {}
+    cumulative_returns: Dict[str, float] = {}
+    running_peak = -float("inf")
+    drawdowns: Dict[str, float] = {}
+
+    prev_val = None
+    for d in ordered_days:
+        val = values[d]
+        if prev_val is None or prev_val == 0:
+            r = 0.0
+        else:
+            r = (val - prev_val) / (prev_val + eps)
+        daily_returns[d] = r
+        cum = (val - first_val) / (first_val + eps)
+        cumulative_returns[d] = cum
+        running_peak = max(running_peak, val)
+        dd = 0.0 if running_peak <= 0 else (val - running_peak) / (running_peak + eps)
+        drawdowns[d] = dd
+        prev_val = val
+
+    # Rolling metrics
+    rolling_sharpe: Dict[str, float] = {}
+    rolling_sortino: Dict[str, float] = {}
+    rolling_calmar: Dict[str, float] = {}
+
+    series: List[float] = []
+    for i, d in enumerate(ordered_days):
+        r = daily_returns[d]
+        series.append(r)
+        mean_r = sum(series) / max(len(series), 1)
+        var_r = sum((x - mean_r) ** 2 for x in series) / max(len(series) - 1, 1)
+        std_r = (var_r ** 0.5) if var_r > 0 else 0.0
+        negs = [min(x, 0.0) for x in series]
+        if any(negs):
+            mean_down = sum((x) ** 2 for x in negs) / max(len([x for x in negs if x < 0]), 1)
+            down_dev = (abs(mean_down) ** 0.5)
+        else:
+            down_dev = 0.0
+
+        rolling_sharpe[d] = mean_r / (std_r + eps)
+        rolling_sortino[d] = mean_r / (down_dev + eps)
+        # Rolling calmar uses cumulative return and max drawdown so far
+        max_dd_so_far = min(drawdowns[x] for x in ordered_days[: i + 1]) if i >= 0 else 0.0
+        rolling_calmar[d] = cumulative_returns[d] / (abs(max_dd_so_far) + eps)
+
+        # Update each day's snapshot with rolling metrics
+        try:
+            snap_path = Path(out_root) / d / f"portfolio_snapshot_{d}.json"
+            if snap_path.exists():
+                snap = json.loads(snap_path.read_text(encoding="utf-8"))
+                # Compute portfolio value and add metrics
+                portfolio = snap.get("portfolio", {}) if isinstance(snap.get("portfolio"), dict) else {}
+                liquid = float(snap.get("liquid", 0.0) or 0.0)
+                total_val = liquid
+                for t, info in portfolio.items():
+                    qty = float(info.get("totalAmount", 0.0) or 0.0)
+                    px = float(info.get("last_price", 0.0) or 0.0)
+                    total_val += qty * px
+                prev_val_local = values.get(ordered_days[i-1]) if i > 0 else None
+                day_ret = 0.0 if not prev_val_local or prev_val_local == 0 else (total_val - prev_val_local) / (prev_val_local + eps)
+                snap["portfolio_value"] = total_val
+                snap["cash"] = liquid
+                snap["buying_power"] = liquid
+                snap["daily_return"] = day_ret
+                snap["cumulative_return"] = cumulative_returns[d]
+                snap["drawdown"] = drawdowns[d]
+                snap["rolling_sharpe"] = rolling_sharpe[d]
+                snap["rolling_sortino"] = rolling_sortino[d]
+                snap["rolling_calmar"] = rolling_calmar[d]
+                snap_path.write_text(json.dumps(snap, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+    # Summary
+    total_return = cumulative_returns[ordered_days[-1]]
+    max_drawdown = min(drawdowns.values()) if drawdowns else 0.0
+    summary = {
+        "start_date": ordered_days[0],
+        "end_date": ordered_days[-1],
+        "total_return": total_return,
+        "max_drawdown": max_drawdown,
+        "final_rolling_sharpe": rolling_sharpe[ordered_days[-1]],
+        "final_rolling_sortino": rolling_sortino[ordered_days[-1]],
+        "final_rolling_calmar": rolling_calmar[ordered_days[-1]],
+    }
+
+    # Update top-level portfolio.json with rolling summary
+    try:
+        portfolio_json = Path("testing/portfolio.json").resolve()
+        if portfolio_json.exists():
+            port = json.loads(portfolio_json.read_text(encoding="utf-8"))
+            port["metrics"] = {
+                "as_of": ordered_days[-1],
+                "total_return": total_return,
+                "max_drawdown": max_drawdown,
+                "rolling_sharpe": rolling_sharpe[ordered_days[-1]],
+                "rolling_sortino": rolling_sortino[ordered_days[-1]],
+                "rolling_calmar": rolling_calmar[ordered_days[-1]],
+            }
+            portfolio_json.write_text(json.dumps(port, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+    stats = {
+        "model": model_name,
+        "summary": summary,
+    }
+
+    stats_name = f"{model_name}[{ordered_days[0]}]-[{ordered_days[-1]}]-statistics.json"
+    stats_path = Path(out_root) / stats_name
+    with open(stats_path, 'w') as f:
+        json.dump(stats, f, indent=2)
+    print(f"✅ Backtest statistics saved -> {stats_path.as_posix()}")
 
 
 if __name__ == "__main__":

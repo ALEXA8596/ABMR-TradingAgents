@@ -1,0 +1,12 @@
+{
+  "model": "gpt-4o-mini",
+  "summary": {
+    "start_date": "2025-07-22",
+    "end_date": "2025-07-23",
+    "total_return": -0.009212706298828033,
+    "max_drawdown": -0.009212706298828033,
+    "final_rolling_sharpe": -0.7071066726408266,
+    "final_rolling_sortino": -0.49999994572713713,
+    "final_rolling_calmar": -0.9999998914542743
+  }
+}

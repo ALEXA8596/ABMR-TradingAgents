@@ -1,13 +1,13 @@
-# Multithreaded Batch Portfolio Report (2025-07-21)
+# Multithreaded Batch Portfolio Report (2025-07-22)
 
-- Runtime: 00:03:28 (208.99s)
+- Runtime: 00:03:37 (217.84s)
 
 ## Decisions
 
 - AAPL: SELL
 - AMZN: SELL
 - GOOG: SELL
-- META: HOLD
+- META: SELL
 - NVDA: SELL
 
 ## LLM Views (bounded)
@@ -15,18 +15,18 @@
 - AAPL: -0.02
 - AMZN: -0.02
 - GOOG: -0.02
-- META: 0.0
+- META: -0.02
 - NVDA: -0.02
 
 ## Resizing Summary
 
 ## Trades
 
-- AAPL: delta=-61, target_qty=61, current_qty=0, price=232.13999938964844
-- AMZN: delta=-65, target_qty=65, current_qty=0, price=229.0
-- GOOG: delta=-60, target_qty=60, current_qty=0, price=213.52999877929688
-- META: delta=0, target_qty=44, current_qty=0, price=738.7000122070312
-- NVDA: delta=-145, target_qty=145, current_qty=0, price=174.17999267578125
+- AAPL: delta=-77, target_qty=77, current_qty=0, price=214.15695190429688
+- AMZN: delta=-76, target_qty=76, current_qty=0, price=227.47000122070312
+- GOOG: delta=-79, target_qty=79, current_qty=0, price=192.11000061035156
+- META: delta=-29, target_qty=29, current_qty=0, price=704.8099975585938
+- NVDA: delta=-179, target_qty=179, current_qty=0, price=167.02999877929688
 
 ## Risk Parity Reference
 

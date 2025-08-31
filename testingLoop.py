@@ -147,11 +147,6 @@ def _extract_action_and_rationale(final_state, final_decision) -> Tuple[str, str
         rationale = ""
         if isinstance(final_state, dict):
             rationale = final_state.get("final_trade_rationale") or ""
-            po = final_state.get("portfolio_optimization_state") or {}
-            if isinstance(po, dict):
-                exec_info = po.get("execution") or {}
-                if exec_info:
-                    rationale = (rationale + "\n" if rationale else "") + f"Optimizer Execution: {exec_info}"
         return action, rationale
     except Exception:
         return str(final_decision), ""
