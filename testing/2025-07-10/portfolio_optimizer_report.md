@@ -1,22 +1,22 @@
-# Batch Portfolio Optimizer Report (2025-07-10)
+# Multithreaded Batch Portfolio Report (2025-07-10)
 
-- Runtime: 00:16:02 (962.08s)
+- Runtime: 00:03:44 (224.53s)
 
 ## Decisions
 
 - AAPL: SELL
-- AMZN: HOLD
+- AMZN: SELL
 - GOOG: SELL
-- META: SELL
+- META: HOLD
 - NVDA: SELL
 
 ## Suggested Weights (normalized from decisions)
 
-- AAPL: 0.1111
-- AMZN: 0.5556
 - GOOG: 0.1111
-- META: 0.1111
+- AAPL: 0.1111
+- META: 0.5556
 - NVDA: 0.1111
+- AMZN: 0.1111
 
 ## Risk Parity Reference
 
