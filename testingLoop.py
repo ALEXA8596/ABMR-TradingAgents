@@ -3,10 +3,13 @@ import copy
 import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Dict, Tuple
+import time
 
 from tradingagents.graph.trading_graph import TradingAgentsGraph  # [`tradingagents.graph.trading_graph.TradingAgentsGraph`](tradingagents/graph/trading_graph.py)
 from tradingagents.default_config import DEFAULT_CONFIG  # [`DEFAULT_CONFIG`](tradingagents/default_config.py)
 import dotenv
+from tradingagents.agents.utils.agent_utils import Toolkit
 
 dotenv.load_dotenv()
 
@@ -106,6 +109,138 @@ def run_range(
     print("🏁 Completed range.")
 
 
+def _extract_action_and_rationale(final_state, final_decision) -> Tuple[str, str]:
+    try:
+        action = None
+        # Prefer explicit final_decision if BUY/SELL/HOLD
+        if isinstance(final_decision, str) and final_decision.upper() in {"BUY", "SELL", "HOLD"}:
+            action = final_decision.upper()
+        # Check portfolio optimizer execution
+        if not action and isinstance(final_state, dict):
+            po = final_state.get("portfolio_optimization_state") or {}
+            if isinstance(po, dict):
+                exec_info = po.get("execution") or {}
+                if isinstance(exec_info, dict) and exec_info.get("action"):
+                    action = str(exec_info.get("action")).upper()
+        # Parse from trader plan text
+        if not action and isinstance(final_state, dict):
+            plan = final_state.get("trader_investment_plan") or ""
+            text = str(plan).upper()
+            if "FINAL TRANSACTION PROPOSAL: **BUY**" in text:
+                action = "BUY"
+            elif "FINAL TRANSACTION PROPOSAL: **SELL**" in text:
+                action = "SELL"
+            elif "FINAL TRANSACTION PROPOSAL: **HOLD**" in text:
+                action = "HOLD"
+        if not action:
+            action = "HOLD"
+        rationale = ""
+        if isinstance(final_state, dict):
+            rationale = final_state.get("final_trade_rationale") or ""
+            po = final_state.get("portfolio_optimization_state") or {}
+            if isinstance(po, dict):
+                exec_info = po.get("execution") or {}
+                if exec_info:
+                    rationale = (rationale + "\n" if rationale else "") + f"Optimizer Execution: {exec_info}"
+        return action, rationale
+    except Exception:
+        return str(final_decision), ""
+
+
+def _weights_from_actions(actions: Dict[str, str]) -> Dict[str, float]:
+    # Simple heuristic: BUY=1.5, HOLD=1.0, SELL=0.2, then normalize
+    raw = {}
+    for t, a in actions.items():
+        a_up = (a or "").upper()
+        score = 1.0
+        if a_up == "BUY":
+            score = 1.5
+        elif a_up == "SELL":
+            score = 0.2
+        elif a_up == "HOLD":
+            score = 1.0
+        raw[t] = max(0.0, float(score))
+    s = sum(raw.values()) or 1.0
+    return {t: round(v / s, 4) for t, v in raw.items()}
+
+
+def run_batch5_single_day(
+    date_str: str,
+    out_root: str = "testing",
+    debug: bool = False,
+    deep_copy_config: bool = True,
+    fail_fast: bool = False,
+    show_trace: bool = False,
+):
+    tickers = ["AAPL", "AMZN", "GOOG", "META", "NVDA"]
+    out_date_dir = Path(out_root) / date_str
+    out_date_dir.mkdir(parents=True, exist_ok=True)
+
+    base_config = copy.deepcopy(DEFAULT_CONFIG) if deep_copy_config else DEFAULT_CONFIG.copy()
+    graph = TradingAgentsGraph(debug=debug, config=base_config)
+
+    print(f"🟢 Starting batch-5 testing run for {date_str}: {', '.join(tickers)} | outdir={out_date_dir}")
+    t0 = time.time()
+
+    decisions: Dict[str, str] = {}
+    rationales: Dict[str, str] = {}
+
+    for ticker in tickers:
+        print(f"🚀 {ticker} {date_str} starting")
+        try:
+            final_state, final_decision = graph.propagate(ticker, date_str)
+        except Exception as e:
+            print(f"❌ Error {ticker} {date_str}: {e}")
+            if show_trace:
+                traceback.print_exc()
+            if fail_fast:
+                raise
+            continue
+
+        action, rationale = _extract_action_and_rationale(final_state, final_decision)
+        decisions[ticker] = action
+        rationales[ticker] = rationale
+
+        file_text = "\n".join([
+            f"TICKER: {ticker}",
+            f"DATE: {date_str}",
+            f"DECISION: {action}",
+            "RATIONALE:",
+            rationale or "",
+        ]) + "\n"
+        (out_date_dir / f"{ticker}.txt").write_text(file_text, encoding="utf-8")
+        print(f"✅ Saved -> {(out_date_dir / f'{ticker}.txt').as_posix()}")
+
+    # Consolidated portfolio optimization based on decisions
+    weights = _weights_from_actions(decisions)
+    toolkit = Toolkit(config=base_config)
+    # Optional: include risk parity as a reference baseline
+    try:
+        rp = toolkit.get_portfolio_risk_parity.invoke({})
+    except Exception:
+        rp = {"error": "risk parity unavailable"}
+    runtime_s = round(time.time() - t0, 2)
+    runtime_hms = f"{int(runtime_s//3600):02d}:{int((runtime_s%3600)//60):02d}:{int(runtime_s%60):02d}"
+
+    lines = []
+    lines.append(f"# Batch Portfolio Optimizer Report ({date_str})\n")
+    lines.append(f"- Runtime: {runtime_hms} ({runtime_s}s)\n")
+    lines.append("## Decisions\n")
+    for t in tickers:
+        if t in decisions:
+            lines.append(f"- {t}: {decisions[t]}")
+    lines.append("\n## Suggested Weights (normalized from decisions)\n")
+    for t, w in weights.items():
+        lines.append(f"- {t}: {w}")
+    lines.append("\n## Risk Parity Reference\n")
+    lines.append("```json")
+    import json as _json
+    lines.append(_json.dumps(rp, indent=2))
+    lines.append("```")
+    (out_date_dir / "portfolio_optimizer_report.md").write_text("\n".join(lines), encoding="utf-8")
+    print(f"✅ Saved -> {(out_date_dir / 'portfolio_optimizer_report.md').as_posix()}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run trading agents over a date range; persist decisions as TICKER_DATE.txt."
@@ -119,20 +254,32 @@ def main():
     parser.add_argument("--fail-fast", action="store_true", help="Abort on first error")
     parser.add_argument("--trace", action="store_true", help="Show full tracebacks on errors")
     parser.add_argument("--single-day", action="store_true", help="Run for a single day (end_date = start_date)")
+    parser.add_argument("--batch-5", action="store_true", help="Run batch for AAPL, AMZN, GOOG, META, NVDA for a single day")
     args = parser.parse_args()
 
     resolved_end_date = args.start_date if (args.single_day or not args.end_date) else args.end_date
 
-    run_range(
-        args.ticker,
-        args.start_date,
-        resolved_end_date,
-        args.outdir,
-        args.debug,
-        deep_copy_config=not args.shallow_config,
-        fail_fast=args.fail_fast,
-        show_trace=args.trace,
-    )
+    if args.batch_5:
+        # Force single-day batch for the requested date
+        run_batch5_single_day(
+            date_str=args.start_date,
+            out_root=args.outdir,
+            debug=args.debug,
+            deep_copy_config=not args.shallow_config,
+            fail_fast=args.fail_fast,
+            show_trace=args.trace,
+        )
+    else:
+        run_range(
+            args.ticker,
+            args.start_date,
+            resolved_end_date,
+            args.outdir,
+            args.debug,
+            deep_copy_config=not args.shallow_config,
+            fail_fast=args.fail_fast,
+            show_trace=args.trace,
+        )
 
 
 if __name__ == "__main__":
