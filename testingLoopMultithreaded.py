@@ -2,7 +2,7 @@ import argparse
 import copy
 import json
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Tuple
 import time
@@ -12,6 +12,12 @@ from threading import Lock
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.agents.utils.agent_utils import Toolkit
+from tradingagents.agents.managers.MVO_BLM.pipeline import size_positions
+from tradingagents.dataflows import interface as data_interface
+from langchain_openai import ChatOpenAI
+import yfinance as yf
+import dotenv
+dotenv.load_dotenv()
 GRAPH_INIT_LOCK = Lock()
 
 
@@ -103,6 +109,12 @@ def run_batch5_multithreaded(
     print(f"🟢 Starting multithreaded batch-5 run for {date_str}: {', '.join(tickers)} | outdir={out_date_dir}")
     t0 = time.time()
 
+    # Reset portfolio for this run (positions-only schema)
+    portfolio_path = (Path.cwd() / "testing" / "portfolio.json").resolve()
+    portfolio_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(portfolio_path, 'w') as f:
+        json.dump({"portfolio": {}, "liquid": 100000}, f, indent=2)
+
     decisions: Dict[str, str] = {}
 
     with ThreadPoolExecutor(max_workers=5) as executor:
@@ -121,7 +133,111 @@ def run_batch5_multithreaded(
                 if fail_fast:
                     raise
 
-    # Consolidated portfolio optimization based on decisions
+    # After threads finish: generate LLM-based views for BL (fallback to decisions mapping)
+    def _generate_llm_views(cfg: Dict, syms: list[str], d: str) -> Dict[str, float]:
+        try:
+            model = cfg.get("quick_think_llm", "gpt-4o-mini")
+            llm = ChatOpenAI(model=model)
+            prompt = (
+                "You are a portfolio strategist. For the given tickers, provide expected annualized excess returns "
+                "(decimal, e.g., 0.03 for +3%) for the next period based on macro/sector/price action. "
+                "Return only a compact JSON object with tickers as keys and decimals as values. "
+                f"Tickers: {', '.join(syms)}. Date context: {d}."
+            )
+            resp = llm.invoke(prompt)  # type: ignore
+            txt = getattr(resp, "content", "{}")
+            try:
+                data = json.loads(txt)
+                if isinstance(data, dict):
+                    # clamp to [-0.1, 0.1]
+                    return {k: float(max(-0.1, min(0.1, v))) for k, v in data.items() if k in syms}
+            except Exception:
+                pass
+        except Exception:
+            pass
+        # fallback: decision-based views
+        v: Dict[str, float] = {}
+        for t, a in decisions.items():
+            a_up = (a or '').upper()
+            v[t] = 0.02 if a_up == 'BUY' else (-0.02 if a_up == 'SELL' else 0.0)
+        return v
+
+    llm_views = _generate_llm_views(base_config, tickers, date_str)
+
+    # Run MVO-BLM sizing for the day
+    def _get_prices_for_date(tks, d):
+        prices: Dict[str, float] = {}
+        for t in tks:
+            try:
+                prices[t] = float(data_interface.get_price_from_csv(t, d))
+            except Exception:
+                try:
+                    hist = yf.Ticker(t).history(period="1d")
+                    prices[t] = float(hist['Close'].iloc[-1]) if not hist.empty else 0.0
+                except Exception:
+                    prices[t] = 0.0
+        return prices
+
+    prices = _get_prices_for_date(tickers, date_str)
+    portfolio_path = (Path.cwd() / "testing" / "portfolio.json").resolve()
+    trades = size_positions(tickers, date_str, decisions, str(portfolio_path), prices, views=llm_views)
+
+    # Resizing report
+    rr_lines = [f"# Resizing Report ({date_str})\n", "## Trades\n"]
+    for t in tickers:
+        tr = trades.get(t)
+        if tr:
+            rr_lines.append(f"- {t}: delta={tr.get('delta_shares')}, target_qty={tr.get('target_qty')}, current_qty={tr.get('current_qty')}, price={tr.get('price')}")
+        else:
+            rr_lines.append(f"- {t}: no change")
+    (out_date_dir / "resizingReport.md").write_text("\n".join(rr_lines), encoding="utf-8")
+    print(f"✅ Saved -> {(out_date_dir / 'resizingReport.md').as_posix()}")
+
+    # Execute aggregated trades and then snapshot
+    try:
+        with open(portfolio_path, 'r') as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        data = {"portfolio": {}, "liquid": 100000}
+    if "portfolio" not in data or not isinstance(data["portfolio"], dict):
+        data["portfolio"] = {}
+    if "liquid" not in data or not isinstance(data["liquid"], (int, float)):
+        data["liquid"] = 100000
+    for sym, tr in (trades or {}).items():
+        price = float(tr.get("price", 0.0) or 0.0)
+        if price <= 0:
+            continue
+        delta = int(tr.get("delta_shares", 0))
+        holdings = data["portfolio"].get(sym, {"totalAmount": 0})
+        if delta > 0:
+            max_affordable = int((float(data.get("liquid", 0.0)) // price))
+            buy_qty = min(delta, max_affordable)
+            if buy_qty > 0:
+                cost = buy_qty * price
+                holdings["totalAmount"] = int(holdings.get("totalAmount", 0)) + buy_qty
+                holdings["last_price"] = price
+                data["liquid"] = float(data.get("liquid", 0.0)) - cost
+        elif delta < 0:
+            sell_qty = abs(delta)
+            current_qty = int(holdings.get("totalAmount", 0))
+            holdings["totalAmount"] = current_qty - sell_qty
+            proceeds = sell_qty * price
+            holdings["last_price"] = price
+            data["liquid"] = float(data.get("liquid", 0.0)) + proceeds
+        else:
+            # HOLD: update last_price only
+            holdings["last_price"] = price
+        data["portfolio"][sym] = holdings
+    with open(portfolio_path, 'w') as f:
+        json.dump(data, f, indent=2)
+
+    # Snapshot now
+    snap_path = out_date_dir / f"portfolio_snapshot_{date_str}.json"
+    with open(snap_path, 'w') as f:
+        json.dump(data, f, indent=2)
+    print(f"📸 Portfolio snapshot saved -> {snap_path.as_posix()}")
+
+    # Consolidated portfolio optimization based on decisions (summary)
     weights = _weights_from_actions(decisions)
     toolkit = Toolkit(config=base_config)
     try:
@@ -138,9 +254,12 @@ def run_batch5_multithreaded(
     for t in tickers:
         if t in decisions:
             lines.append(f"- {t}: {decisions[t]}")
-    lines.append("\n## Suggested Weights (normalized from decisions)\n")
-    for t, w in weights.items():
-        lines.append(f"- {t}: {w}")
+    lines.append("\n## LLM Views (bounded)\n")
+    for t in tickers:
+        if t in llm_views:
+            lines.append(f"- {t}: {llm_views[t]}")
+    lines.append("\n## Resizing Summary\n")
+    lines.extend(rr_lines[1:])
     lines.append("\n## Risk Parity Reference\n")
     lines.append("```json")
     lines.append(json.dumps(rp, indent=2))
@@ -150,8 +269,9 @@ def run_batch5_multithreaded(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run 5 tickers in parallel for a single date; write outputs under testing/YYYY-MM-DD/")
-    parser.add_argument("date", help="Single date YYYY-MM-DD")
+    parser = argparse.ArgumentParser(description="Run 5 tickers in parallel; single date or sequential date range. Outputs under testing/YYYY-MM-DD/")
+    parser.add_argument("date", help="Start date YYYY-MM-DD")
+    parser.add_argument("end_date", nargs='?', default=None, help="Optional end date YYYY-MM-DD for sequential runs")
     parser.add_argument("--outdir", default="testing", help="Output directory (default: testing)")
     parser.add_argument("--debug", action="store_true", help="Enable graph debug mode")
     parser.add_argument("--shallow-config", action="store_true", help="Use shallow copy of DEFAULT_CONFIG")
@@ -159,14 +279,30 @@ def main():
     parser.add_argument("--trace", action="store_true", help="Show full tracebacks on errors")
     args = parser.parse_args()
 
-    run_batch5_multithreaded(
-        date_str=args.date,
-        out_root=args.outdir,
-        debug=args.debug,
-        deep_copy_config=not args.shallow_config,
-        fail_fast=args.fail_fast,
-        show_trace=args.trace,
-    )
+    if args.end_date:
+        start_dt = datetime.strptime(args.date, "%Y-%m-%d")
+        end_dt = datetime.strptime(args.end_date, "%Y-%m-%d")
+        cur = start_dt
+        while cur <= end_dt:
+            day = cur.strftime("%Y-%m-%d")
+            run_batch5_multithreaded(
+                date_str=day,
+                out_root=args.outdir,
+                debug=args.debug,
+                deep_copy_config=not args.shallow_config,
+                fail_fast=args.fail_fast,
+                show_trace=args.trace,
+            )
+            cur += timedelta(days=1)
+    else:
+        run_batch5_multithreaded(
+            date_str=args.date,
+            out_root=args.outdir,
+            debug=args.debug,
+            deep_copy_config=not args.shallow_config,
+            fail_fast=args.fail_fast,
+            show_trace=args.trace,
+        )
 
 
 if __name__ == "__main__":

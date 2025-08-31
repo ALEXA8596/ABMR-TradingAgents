@@ -30,7 +30,6 @@ class StockstatsUtils:
 
         if not online:
             try:
-                # print("Using offline tools to fetch data...")
                 data = pd.read_csv(
                     os.path.join(
                         data_dir,
@@ -39,7 +38,25 @@ class StockstatsUtils:
                 )
                 df = wrap(data)
             except FileNotFoundError:
-                raise Exception("Stockstats fail: Yahoo Finance data not fetched yet!")
+                # Fallback: fetch via yfinance and save for offline reuse
+                start_date = "2015-01-01"
+                end_date = pd.Timestamp.today().strftime("%Y-%m-%d")
+                fetched = yf.download(
+                    symbol,
+                    start=start_date,
+                    end=end_date,
+                    multi_level_index=False,
+                    progress=False,
+                    auto_adjust=True,
+                )
+                fetched = fetched.reset_index()
+                os.makedirs(data_dir, exist_ok=True)
+                out_file = os.path.join(
+                    data_dir,
+                    f"{symbol}-YFin-data-2015-01-01-2025-07-27.csv",
+                )
+                fetched.to_csv(out_file, index=False)
+                df = wrap(fetched)
         else:
             # Get today's date as YYYY-mm-dd to add to cache
             today_date = pd.Timestamp.today()
@@ -78,7 +95,16 @@ class StockstatsUtils:
             df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
             curr_date = curr_date.strftime("%Y-%m-%d") # type: ignore
 
-        df[indicator]  # trigger stockstats to calculate the indicator
+        # attempt to compute indicator; remap problematic names
+        try:
+            df[indicator]
+        except Exception:
+            if indicator.lower() in ("dmi", "mdi"):
+                # Use ADX as proxy if DMI parsing fails in current stockstats version
+                indicator = "adx"
+                df[indicator]
+            else:
+                raise
         matching_rows = df[df["Date"].str.startswith(curr_date)]
 
         if not matching_rows.empty:

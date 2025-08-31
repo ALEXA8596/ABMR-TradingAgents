@@ -273,8 +273,20 @@ class TradingAgentsGraph:
         # Add more chunk processing logic as needed
 
     def _extract_final_decision(self, final_state: Dict[str, Any]) -> str:
-        """Extract the final trading decision from the state."""
-        # Prefer Portfolio Optimizer execution action if available
+        """Extract the final trading decision from the state.
+
+        Policy: decisions come from the analysis pipeline (trader/risk), not the MVO-BLM executor.
+        The portfolio optimizer may execute sizing but should not override the decision verb (BUY/SELL/HOLD).
+        """
+        # Prefer explicit pipeline decision fields
+        decision = final_state.get("final_trade_decision")
+        if decision:
+            return str(decision)
+        # Fallback to trader plan text if present
+        plan = final_state.get("trader_investment_plan")
+        if plan:
+            return str(plan)
+        # Last resort: if nothing else exists, look at optimizer execution action
         try:
             po_state = final_state.get("portfolio_optimization_state")
             if isinstance(po_state, dict):
@@ -284,13 +296,7 @@ class TradingAgentsGraph:
                     return str(action)
         except Exception:
             pass
-
-        # Fallbacks for older flows
-        return (
-            final_state.get("final_trade_decision")
-            or final_state.get("trader_investment_plan")
-            or "No decision made"
-        )
+        return "No decision made"
 
     def get_blackboard_context(self, ticker: str) -> Dict[str, Any]:
         """

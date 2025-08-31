@@ -10,6 +10,16 @@ from tradingagents.graph.trading_graph import TradingAgentsGraph  # [`tradingage
 from tradingagents.default_config import DEFAULT_CONFIG  # [`DEFAULT_CONFIG`](tradingagents/default_config.py)
 import dotenv
 from tradingagents.agents.utils.agent_utils import Toolkit
+from tradingagents.agents.managers.MVO_BLM import size_positions
+from tradingagents.dataflows import interface as data_interface
+import yfinance as yf
+from tradingagents.agents.managers.MVO_BLM import size_positions
+from tradingagents.dataflows import interface as data_interface
+import yfinance as yf
+
+
+#./venv/bin/python testingLoop.py AAPL 2025-07-09 2025-07-10 --batch-5-range --outdir testing | cat
+
 
 dotenv.load_dotenv()
 
@@ -205,7 +215,7 @@ def run_batch5_single_day(
             f"TICKER: {ticker}",
             f"DATE: {date_str}",
             f"DECISION: {action}",
-            "RATIONALE:",
+            "RATIONALE:", 
             rationale or "",
         ]) + "\n"
         (out_date_dir / f"{ticker}.txt").write_text(file_text, encoding="utf-8")
@@ -240,6 +250,34 @@ def run_batch5_single_day(
     (out_date_dir / "portfolio_optimizer_report.md").write_text("\n".join(lines), encoding="utf-8")
     print(f"✅ Saved -> {(out_date_dir / 'portfolio_optimizer_report.md').as_posix()}")
 
+    # Resizing report via MVO-BLM (preview of deltas)
+    def _get_prices_for_date(tks, d):
+        prices: Dict[str, float] = {}
+        for t in tks:
+            try:
+                prices[t] = float(data_interface.get_price_from_csv(t, d))
+            except Exception:
+                try:
+                    hist = yf.Ticker(t).history(period="1d")
+                    prices[t] = float(hist['Close'].iloc[-1]) if not hist.empty else 0.0
+                except Exception:
+                    prices[t] = 0.0
+        return prices
+
+    prices = _get_prices_for_date(tickers, date_str)
+    # Use testing/portfolio.json for isolation from main config
+    portfolio_path = str((Path.cwd() / "testing" / "portfolio.json").resolve())
+    trades = size_positions(tickers, date_str, decisions, portfolio_path, prices)
+    rr_lines = [f"# Resizing Report ({date_str})\n", "## Trades\n"]
+    for t in tickers:
+        tr = trades.get(t)
+        if tr:
+            rr_lines.append(f"- {t}: delta={tr.get('delta_shares')}, target_qty={tr.get('target_qty')}, current_qty={tr.get('current_qty')}, price={tr.get('price')}")
+        else:
+            rr_lines.append(f"- {t}: no change")
+    (out_date_dir / "resizingReport.md").write_text("\n".join(rr_lines), encoding="utf-8")
+    print(f"✅ Saved -> {(out_date_dir / 'resizingReport.md').as_posix()}")
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -255,6 +293,7 @@ def main():
     parser.add_argument("--trace", action="store_true", help="Show full tracebacks on errors")
     parser.add_argument("--single-day", action="store_true", help="Run for a single day (end_date = start_date)")
     parser.add_argument("--batch-5", action="store_true", help="Run batch for AAPL, AMZN, GOOG, META, NVDA for a single day")
+    parser.add_argument("--batch-5-range", action="store_true", help="Run batch-5 for each day in range")
     args = parser.parse_args()
 
     resolved_end_date = args.start_date if (args.single_day or not args.end_date) else args.end_date
@@ -269,6 +308,21 @@ def main():
             fail_fast=args.fail_fast,
             show_trace=args.trace,
         )
+    elif args.batch_5_range:
+        start_dt = datetime.strptime(args.start_date, "%Y-%m-%d")
+        end_dt = datetime.strptime(resolved_end_date, "%Y-%m-%d")
+        cur = start_dt
+        while cur <= end_dt:
+            day = cur.strftime("%Y-%m-%d")
+            run_batch5_single_day(
+                date_str=day,
+                out_root=args.outdir,
+                debug=args.debug,
+                deep_copy_config=not args.shallow_config,
+                fail_fast=args.fail_fast,
+                show_trace=args.trace,
+            )
+            cur += timedelta(days=1)
     else:
         run_range(
             args.ticker,

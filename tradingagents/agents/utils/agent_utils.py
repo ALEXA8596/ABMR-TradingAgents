@@ -465,45 +465,32 @@ class Toolkit:
 
     @staticmethod
     def buy_impl(ticker, date: Annotated[str, "Date of the purchase in yyyy-mm-dd format"], quantity = 1) -> str:
-        """Implementation to buy shares and persist to portfolio.json"""
+        """Implementation to buy shares and persist to portfolio.json (positions only, no trade log)"""
         portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json")
         if not os.path.exists(portfolio_path):
             with open(portfolio_path, "w") as f:
-                json.dump({"portfolio": {}, "liquid": 0}, f)
+                json.dump({"portfolio": {}, "liquid": 100000}, f)
         data = json.load(open(portfolio_path, "r"))
         if "portfolio" not in data or not isinstance(data["portfolio"], dict):
             data["portfolio"] = {}
-        holdings = data["portfolio"].get(ticker, {"totalAmount": 0, "trades": []})
+        holdings = data["portfolio"].get(ticker, {"totalAmount": 0})
         # Fetch current price
         try:
             stock = yf.Ticker(ticker)
             current_price = float(stock.history(period="1d")["Close"].iloc[-1])
         except Exception:
-            current_price = float(stock.history(period="1d")['Close'].iloc[-1])
-        except Exception as e:
-            print(f"⚠️ Warning: Could not fetch current price for {ticker}: {str(e)}")
             current_price = 0.0
         # Update liquidity if present
         if "liquid" not in data:
-            data["liquid"] = 0
+            data["liquid"] = 100000
         cost = quantity * current_price
         if data["liquid"] < cost and current_price > 0:
             quantity = int(data["liquid"] // current_price)
             cost = quantity * current_price
             if quantity == 0:
                 return f"Insufficient liquidity to buy {ticker}."
-        holdings["totalAmount"] = holdings.get("totalAmount", 0) + quantity
-        if "trades" not in holdings:
-            holdings["trades"] = []
-        transaction = {
-            "date": date,
-            "type": "BUY",
-            "quantity": quantity,
-            "price_per_share": current_price,
-            "total_value": holdings["totalAmount"] * current_price,
-            "ticker": ticker
-        }
-        holdings["trades"].append(transaction)
+        holdings["totalAmount"] = int(holdings.get("totalAmount", 0)) + int(quantity)
+        holdings["last_price"] = current_price
         data["portfolio"][ticker] = holdings
         data["liquid"] = max(0, data.get("liquid", 0) - cost)
         with open(portfolio_path, "w") as f:
@@ -523,26 +510,22 @@ class Toolkit:
 
     @staticmethod
     def hold_impl(ticker: str, date: str, note: str = "") -> str:
-        """Persist a HOLD decision as a portfolio transaction (quantity 0) so actions are auditable."""
+        """Persist a HOLD decision (positions-only schema); updates last_price when possible."""
         portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json")
         if not os.path.exists(portfolio_path):
             with open(portfolio_path, "w") as f:
-                json.dump({"portfolio": {}, "liquid": 0}, f)
+                json.dump({"portfolio": {}, "liquid": 100000}, f)
         data = json.load(open(portfolio_path, "r"))
         if "portfolio" not in data or not isinstance(data["portfolio"], dict):
             data["portfolio"] = {}
-        holdings = data["portfolio"].get(ticker, {"totalAmount": 0, "trades": []})
-        if "trades" not in holdings:
-            holdings["trades"] = []
-        holdings["trades"].append({
-            "date": date,
-            "type": "HOLD",
-            "quantity": 0,
-            "price_per_share": None,
-            "total_value": None,
-            "note": note,
-            "ticker": ticker
-        })
+        holdings = data["portfolio"].get(ticker, {"totalAmount": 0})
+        # update last_price if available
+        try:
+            stock = yf.Ticker(ticker)
+            current_price = float(stock.history(period="1d")["Close"].iloc[-1])
+            holdings["last_price"] = current_price
+        except Exception:
+            pass
         data["portfolio"][ticker] = holdings
         with open(portfolio_path, "w") as f:
             json.dump(data, f, indent=2)
@@ -564,7 +547,7 @@ class Toolkit:
 
     @staticmethod
     def sell_impl(ticker: str, date: str, quantity: int = 1) -> str:
-        """Implementation to sell shares and persist to portfolio.json"""
+        """Implementation to sell shares and persist to portfolio.json (positions only, no trade log)"""
         portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json")
         if not os.path.exists(portfolio_path):
             return f"No portfolio exists to sell {ticker}."
@@ -583,17 +566,8 @@ class Toolkit:
             current_price = float(stock.history(period="1d")["Close"].iloc[-1])
         except Exception:
             current_price = 0.0
-        holdings["totalAmount"] = current_shares - sell_qty
-        if "trades" not in holdings:
-            holdings["trades"] = []
-        holdings["trades"].append({
-            "date": date,
-            "type": "SELL",
-            "quantity": sell_qty,
-            "price_per_share": current_price,
-            "total_value": holdings["totalAmount"] * current_price,
-            "ticker": ticker
-        })
+        holdings["totalAmount"] = int(current_shares - sell_qty)
+        holdings["last_price"] = current_price
         data["portfolio"][ticker] = holdings
         data["liquid"] = data.get("liquid", 0) + sell_qty * current_price
         with open(portfolio_path, "w") as f:

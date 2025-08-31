@@ -1,0 +1,25 @@
+{
+  "portfolio": {
+    "AAPL": {
+      "totalAmount": -60,
+      "last_price": 232.13999938964844
+    },
+    "AMZN": {
+      "totalAmount": -64,
+      "last_price": 229.0
+    },
+    "GOOG": {
+      "totalAmount": -59,
+      "last_price": 213.52999877929688
+    },
+    "META": {
+      "totalAmount": 0,
+      "last_price": 738.7000122070312
+    },
+    "NVDA": {
+      "totalAmount": -146,
+      "last_price": 174.17999267578125
+    }
+  },
+  "liquid": 166612.94882202148
+}
