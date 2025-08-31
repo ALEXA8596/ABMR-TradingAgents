@@ -1423,6 +1423,44 @@ class BlackboardAgent:
         write_message(message.model_dump())
         return message.message_id
     
+    def post_portfolio_decision(self, ticker: str, decision: str, confidence: str,
+                               reasoning: str, portfolio_action: str,
+                               target: Optional[Dict[str, str]] = None) -> str:
+        """
+        Post portfolio decision to the blackboard.
+        
+        Args:
+            ticker: Stock ticker symbol
+            decision: Final decision (BUY, SELL, HOLD)
+            confidence: Confidence level in the decision
+            reasoning: Reasoning behind the decision
+            portfolio_action: Action to take in the portfolio
+            target: Optional target recipient
+            
+        Returns:
+            Message ID of the posted message
+        """
+        content = {
+            "ticker": ticker,
+            "decision": decision,
+            "confidence": confidence,
+            "reasoning": reasoning,
+            "portfolio_action": portfolio_action
+        }
+        
+        message = BlackboardMessage(
+            message_id=str(uuid.uuid4()),
+            sender=self.sender,
+            intent="Inform",
+            type="PortfolioDecision",
+            target=target,
+            timestamp=datetime.utcnow(),
+            content=content
+        )
+        
+        write_message(message.model_dump())
+        return message.message_id
+    
     def get_comprehensive_trade_context(self, ticker: str) -> Dict[str, Any]:
         """
         Get comprehensive trade context for a ticker from all agents.

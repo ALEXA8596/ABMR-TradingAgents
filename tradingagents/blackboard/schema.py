@@ -46,6 +46,7 @@ PORTFOLIO_BALANCE = "PortfolioBalance"
 SECTOR_ANALYSIS = "SectorAnalysis"
 PORTFOLIO_RISK_ASSESSMENT = "PortfolioRiskAssessment"
 PORTFOLIO_OPTIMIZATION = "PortfolioOptimization"
+PORTFOLIO_DECISION = "PortfolioDecision"
 
 
 class BlackboardMessage(BaseModel):

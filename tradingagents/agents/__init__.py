@@ -22,9 +22,11 @@ from .risk_mgmt.neutral_debator import create_neutral_debator  # RESTORED
 
 from .managers.research_manager import create_research_manager
 from .managers.risk_manager import create_risk_manager
-from .managers.portfolio_optimizer import create_portfolio_optimizer
+from .managers.portfolio_optimizer_refactored import create_portfolio_optimizer
 from .managers.multi_ticker_portfolio_optimizer import create_multi_ticker_portfolio_optimizer
 from .managers.quantoptions_manager import create_quant_options_manager
+from .managers.portfolio_manager import create_portfolio_manager
+from .managers.execution_manager import create_execution_manager
 
 from .trader.trader import create_trader
 
@@ -53,5 +55,7 @@ __all__ = [
     "create_portfolio_optimizer",
     "create_multi_ticker_portfolio_optimizer",
     "create_quant_options_manager",
+    "create_portfolio_manager",
+    "create_execution_manager",
     "create_trader",
 ]

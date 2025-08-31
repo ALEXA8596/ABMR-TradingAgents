@@ -9,7 +9,7 @@ from tradingagents.agents import *
 from tradingagents.agents.utils.agent_states import AgentState
 from tradingagents.agents.utils.agent_utils import Toolkit
 from tradingagents.agents.managers.multi_ticker_portfolio_optimizer import create_multi_ticker_portfolio_optimizer
-from tradingagents.agents.managers.portfolio_optimizer import create_portfolio_optimizer
+# from tradingagents.agents.managers.portfolio_optimizer_refactored import create_portfolio_optimizer
 
 from .conditional_logic import ConditionalLogic
 from datetime import datetime
@@ -149,7 +149,7 @@ class GraphSetup:
             self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
         )
         
-        portfolio_optimizer_node = create_portfolio_optimizer(
+        portfolio_optimizer_node = create_multi_ticker_portfolio_optimizer(
             self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
         )
 
