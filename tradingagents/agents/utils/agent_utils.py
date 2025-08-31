@@ -500,13 +500,17 @@ class Toolkit:
         new_qty = prev_qty + buy_qty
         holdings["totalAmount"] = new_qty
         holdings["last_price"] = current_price
-        # Maintain entry price (volume-weighted average cost)
+        # Entry price logic: VWAP for adds on the same side; reset when side flips
         try:
             prev_entry = float(holdings.get("entry_price", 0.0) or 0.0)
             if current_price > 0 and buy_qty > 0:
-                if prev_qty > 0 and prev_entry > 0:
-                    holdings["entry_price"] = ((prev_entry * prev_qty) + (current_price * buy_qty)) / max(new_qty, 1)
+                if prev_qty >= 0 and new_qty > 0:
+                    if prev_qty > 0 and prev_entry > 0:
+                        holdings["entry_price"] = ((prev_entry * prev_qty) + (current_price * buy_qty)) / max(new_qty, 1)
+                    else:
+                        holdings["entry_price"] = current_price
                 else:
+                    # Crossing from short to long -> new long entry
                     holdings["entry_price"] = current_price
         except Exception:
             holdings["entry_price"] = current_price
@@ -602,12 +606,22 @@ class Toolkit:
         prev_qty = int(current_shares)
         holdings["totalAmount"] = remaining
         holdings["last_price"] = current_price
-        # Entry price rules:
-        # - If crossing from >=0 to <0, set entry_price to current_price (short entry)
-        # - If already short and selling more (increasing absolute short), keep existing entry_price
-        # - If covering to zero, clear entry_price
+        # Entry price rules: VWAP on same-side adds; reset on side flip; clear when flat
         prev_entry = float(holdings.get("entry_price", 0.0) or 0.0)
         if prev_qty >= 0 and remaining < 0:
+            # New short entry
+            holdings["entry_price"] = current_price
+        elif prev_qty < 0 and remaining < 0:
+            # Increasing short size -> weighted average by absolute shares
+            prev_abs = abs(prev_qty)
+            new_abs = abs(remaining)
+            add_abs = abs(sell_qty)
+            if prev_abs > 0 and prev_entry > 0:
+                holdings["entry_price"] = ((prev_entry * prev_abs) + (current_price * add_abs)) / max(new_abs, 1)
+            else:
+                holdings["entry_price"] = current_price
+        elif remaining > 0 and prev_qty < 0:
+            # Crossed from short to long
             holdings["entry_price"] = current_price
         elif remaining == 0:
             holdings["entry_price"] = 0.0

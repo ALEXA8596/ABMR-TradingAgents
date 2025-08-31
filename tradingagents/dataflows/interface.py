@@ -37,15 +37,55 @@ def get_price_from_csv(
         f"{ticker.upper()}-YFin-data-2015-01-01-2025-07-27.csv",
     )
     if not os.path.exists(price_path):
-        raise Exception(f"Price data file not found for {ticker}")
+        # Auto-fetch and cache a baseline file
+        start_dt = "2015-01-01"
+        end_dt = "2025-07-27"
+        hist = yf.Ticker(ticker.upper()).history(start=start_dt, end=end_dt)
+        if hist.empty:
+            raise Exception(f"Unable to fetch price data for {ticker}")
+        hist = hist.reset_index()
+        os.makedirs(os.path.dirname(price_path), exist_ok=True)
+        hist.to_csv(price_path, index=False)
 
     df = pd.read_csv(price_path)
     # Normalize date format
     date_str = date.strip()
     # Find row with matching date (ignore time part)
+    if "Date" not in df.columns:
+        raise Exception(f"Invalid price file (no Date column): {price_path}")
+    # Ensure Date as string YYYY-MM-DD
+    if not pd.api.types.is_string_dtype(df["Date"]):
+        try:
+            df["Date"] = pd.to_datetime(df["Date"]).dt.strftime("%Y-%m-%d")
+        except Exception:
+            df["Date"] = df["Date"].astype(str).str[:10]
     row = df[df["Date"].str.startswith(date_str)]
     if row.empty:
-        raise Exception(f"No price found for {ticker} on {date}")
+        # Fetch a small window around the missing date and merge
+        try:
+            target_dt = datetime.strptime(date_str, "%Y-%m-%d")
+        except Exception:
+            raise Exception(f"Invalid date format: {date}")
+        start = (target_dt - relativedelta(days=45)).strftime("%Y-%m-%d")
+        end = (target_dt + relativedelta(days=2)).strftime("%Y-%m-%d")
+        fetched = yf.Ticker(ticker.upper()).history(start=start, end=end)
+        if not fetched.empty:
+            fetched = fetched.reset_index()
+            # Normalize fetched Date
+            if "Date" in fetched.columns:
+                fetched["Date"] = pd.to_datetime(fetched["Date"]).dt.strftime("%Y-%m-%d")
+            else:
+                # some yfinance versions use index
+                fetched.rename(columns={"index": "Date"}, inplace=True)
+                fetched["Date"] = pd.to_datetime(fetched["Date"]).dt.strftime("%Y-%m-%d")
+            # Merge and de-duplicate by Date
+            merged = pd.concat([df, fetched], ignore_index=True)
+            merged = merged.drop_duplicates(subset=["Date"]).sort_values("Date")
+            merged.to_csv(price_path, index=False)
+            df = merged
+            row = df[df["Date"].str.startswith(date_str)]
+        if row.empty:
+            raise Exception(f"No price found for {ticker} on {date}")
     price = float(row.iloc[0]["Close"])
     return price
 
@@ -76,7 +116,17 @@ def get_finnhub_news(
     result = get_data_in_range(ticker, before, curr_date, "news_data", DATA_DIR)
 
     if len(result) == 0:
-        return ""
+        # Fallbacks when finnhub data missing: Google News then OpenAI web search
+        try:
+            alt = get_google_news(ticker, curr_date, look_back_days)
+            if alt:
+                return alt
+        except Exception:
+            pass
+        try:
+            return get_stock_news_openai(ticker, curr_date)
+        except Exception:
+            return ""
 
     combined_result = ""
     seen_dicts = []
@@ -735,7 +785,12 @@ def get_reddit_global_news(
 
     if not os.path.exists(file_path):
         print(f"Macro news file not found: {file_path}")
-        return ""
+        # Fallback to OpenAI-backed macro news search
+        try:
+            print("Falling back to get_global_news_openai for macro news...")
+            return get_global_news_openai(start_date)
+        except Exception:
+            return ""
 
     try:
         with open(file_path, "r", encoding="utf-8") as fh:
@@ -795,7 +850,11 @@ def get_reddit_company_news(
     )
 
     if not posts:
-        return ""
+        try:
+            print(f"No reddit posts found for {ticker_u}; falling back to get_stock_news_openai...")
+            return get_stock_news_openai(ticker_u, start_date)
+        except Exception:
+            return ""
 
     news_str = ""
     for post in posts:
