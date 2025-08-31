@@ -1,5 +1,5 @@
 {
-  "liquid": 100000,
+  "liquid": 98709.90002441406,
   "EXAMPLE": {
     "totalAmount": 15000.0,
     "trades": [
@@ -28,5 +28,28 @@
         "timestamp": "1696233600"
       }
     ]
+  },
+  "portfolio": {
+    "SPY": {
+      "totalAmount": 2,
+      "trades": [
+        {
+          "date": "2025-08-30",
+          "type": "BUY",
+          "quantity": 1,
+          "price_per_share": 645.0499877929688,
+          "total_value": 645.0499877929688,
+          "ticker": "SPY"
+        },
+        {
+          "date": "2025-08-30",
+          "type": "BUY",
+          "quantity": 1,
+          "price_per_share": 645.0499877929688,
+          "total_value": 1290.0999755859375,
+          "ticker": "SPY"
+        }
+      ]
+    }
   }
 }
