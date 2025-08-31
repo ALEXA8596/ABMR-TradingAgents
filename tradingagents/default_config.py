@@ -22,5 +22,11 @@ DEFAULT_CONFIG = {
     "max_recur_limit": 100,
     # Tool settings
     "online_tools": False,
-    "abmrOffline": True
+    "abmrOffline": True,
+    # Testing toggles
+    "run_portfolio_exec_tests": False,
+    "run_testing_loop": False,
+    "testing_start_date": None,
+    "testing_end_date": None,
+    "testing_outdir": "evalRes",
 }

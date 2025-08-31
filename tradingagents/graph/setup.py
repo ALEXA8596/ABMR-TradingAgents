@@ -57,6 +57,17 @@ class GraphSetup:
         if len(selected_analysts) == 0:
             raise ValueError("Trading Agents Graph Setup Error: no analysts selected!")
 
+        # Helper to print progress for each node execution
+        def wrap(node, label: str):
+            def wrapped(state):
+                try:
+                    td = state.get("trade_date", "")
+                except Exception:
+                    td = ""
+                print(f"[ {td} ] Running: {label}")
+                return node(state)
+            return wrapped
+
         # Create analyst nodes
         analyst_nodes = {}
         delete_nodes = {}
@@ -146,11 +157,7 @@ class GraphSetup:
             self.deep_thinking_llm, self.risk_manager_memory, toolkit=self.toolkit
         )
 
-        # Quant options manager and Portfolio optimizer nodes
-        quant_options_manager_node = create_quant_options_manager(
-            self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
-        )
-        
+        # Portfolio optimizer node (final decision maker)
         portfolio_optimizer_node = create_portfolio_optimizer(
             self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
         )
@@ -160,32 +167,33 @@ class GraphSetup:
 
         # Add analyst nodes to the graph
         for analyst_type, node in analyst_nodes.items():
-            workflow.add_node(f"{analyst_type.capitalize()} Analyst", node)
+            workflow.add_node(f"{analyst_type.capitalize()} Analyst", wrap(node, f"{analyst_type.capitalize()} Analyst"))
             workflow.add_node(
-                f"Msg Clear {analyst_type.capitalize()}", delete_nodes[analyst_type]
+                f"Msg Clear {analyst_type.capitalize()}", wrap(delete_nodes[analyst_type], f"Msg Clear {analyst_type.capitalize()}")
             )
+            # ToolNode is not callable; add directly and log via conditional logic
             workflow.add_node(f"tools_{analyst_type}", tool_nodes[analyst_type])
 
         # Add other nodes
-        workflow.add_node("Bull Researcher", bull_researcher_node)
-        workflow.add_node("Bear Researcher", bear_researcher_node)
-        workflow.add_node("Bull Researcher Ask", bull_researcher_ask_node)
-        workflow.add_node("Bull Researcher Ans", bull_researcher_ans_node)
-        workflow.add_node("Bear Researcher Ask", bear_researcher_ask_node)
-        workflow.add_node("Bear Researcher Ans", bear_researcher_ans_node)
-        workflow.add_node("Research Manager", research_manager_node)
-        workflow.add_node("Trader", trader_node)
-        workflow.add_node("Risky Analyst", risky_analyst)
-        workflow.add_node("Risky Analyst Ask", risky_analyst_ask)
-        workflow.add_node("Risky Analyst Ans", risky_analyst_ans)
-        workflow.add_node("Neutral Analyst", neutral_analyst)
-        workflow.add_node("Safe Analyst", safe_analyst)
-        workflow.add_node("Safe Analyst Ask", safe_analyst_ask)
-        workflow.add_node("Safe Analyst Ans", safe_analyst_ans)
-        workflow.add_node("Risk Judge", risk_manager_node)
-        workflow.add_node("tools_Risk Judge", tool_nodes["riskJudge"])
-        workflow.add_node("Quant Options Manager", quant_options_manager_node)
-        workflow.add_node("Portfolio Optimizer", portfolio_optimizer_node)
+        workflow.add_node("Bull Researcher", wrap(bull_researcher_node, "Bull Researcher"))
+        workflow.add_node("Bear Researcher", wrap(bear_researcher_node, "Bear Researcher"))
+        workflow.add_node("Bull Researcher Ask", wrap(bull_researcher_ask_node, "Bull Researcher Ask"))
+        workflow.add_node("Bull Researcher Ans", wrap(bull_researcher_ans_node, "Bull Researcher Ans"))
+        workflow.add_node("Bear Researcher Ask", wrap(bear_researcher_ask_node, "Bear Researcher Ask"))
+        workflow.add_node("Bear Researcher Ans", wrap(bear_researcher_ans_node, "Bear Researcher Ans"))
+        workflow.add_node("Research Manager", wrap(research_manager_node, "Research Manager"))
+        workflow.add_node("Trader", wrap(trader_node, "Trader"))
+        workflow.add_node("Risky Analyst", wrap(risky_analyst, "Risky Analyst"))
+        workflow.add_node("Risky Analyst Ask", wrap(risky_analyst_ask, "Risky Analyst Ask"))
+        workflow.add_node("Risky Analyst Ans", wrap(risky_analyst_ans, "Risky Analyst Ans"))
+        workflow.add_node("Neutral Analyst", wrap(neutral_analyst, "Neutral Analyst"))
+        workflow.add_node("Safe Analyst", wrap(safe_analyst, "Safe Analyst"))
+        workflow.add_node("Safe Analyst Ask", wrap(safe_analyst_ask, "Safe Analyst Ask"))
+        workflow.add_node("Safe Analyst Ans", wrap(safe_analyst_ans, "Safe Analyst Ans"))
+        workflow.add_node("Risk Judge", wrap(risk_manager_node, "Risk Judge"))
+        # ToolNode is not callable; add directly and log via conditional logic
+        workflow.add_node("tools_Risk Judge", tool_nodes["riskJudge"]) 
+        workflow.add_node("Portfolio Optimizer", wrap(portfolio_optimizer_node, "Portfolio Optimizer"))
 
         # Define edges
         # Start with the first analyst
@@ -318,10 +326,7 @@ class GraphSetup:
             },
         )
 
-        workflow.add_edge(
-            "Risk Judge", "Quant Options Manager",
-        )
-        workflow.add_edge("Quant Options Manager", "Portfolio Optimizer")
+        workflow.add_edge("Risk Judge", "Portfolio Optimizer")
         workflow.add_edge("Portfolio Optimizer", END)
 
         # Compile and return

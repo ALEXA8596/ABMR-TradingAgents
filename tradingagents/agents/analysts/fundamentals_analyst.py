@@ -78,6 +78,8 @@ def create_fundamentals_analyst(llm, toolkit):
 
         if len(result.tool_calls) == 0:
             report = result.content.encode('utf-8', errors='replace').decode('utf-8') if result.content else ""
+        else:
+            state["fundamentals_tools_used"] = True
 
         # Escape the result content to handle Unicode characters
         if hasattr(result, 'content') and result.content:

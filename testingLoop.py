@@ -20,7 +20,7 @@ def run_range(
     ticker: str,
     start_date: str,
     end_date: str,
-    outdir: str = "results",
+    outdir: str = "testing",
     debug: bool = False,
     deep_copy_config: bool = True,
     fail_fast: bool = False,
@@ -37,6 +37,9 @@ def run_range(
 
     out_path = Path(outdir)
     out_path.mkdir(parents=True, exist_ok=True)
+
+    # Start banner
+    print(f"🟢 Starting testing run: {ticker.upper()} {start_date} -> {end_date} | outdir={outdir}")
 
     base_config = copy.deepcopy(DEFAULT_CONFIG) if deep_copy_config else DEFAULT_CONFIG.copy()
     graph = TradingAgentsGraph(debug=debug, config=base_config)
@@ -65,19 +68,28 @@ def run_range(
 
         decision_str = final_decision if isinstance(final_decision, str) else str(final_decision)
 
-        # Optional: pull rationale if present
+        # Optional: pull rationale and optimizer excerpt if present
         rationale = ""
+        optimizer_excerpt = ""
         if isinstance(final_state, dict):
-            rationale = final_state.get("final_trade_rationale") or final_state.get("portfolio_optimizer_summary") or ""
+            rationale = final_state.get("final_trade_rationale") or ""
+            po = final_state.get("portfolio_optimization_state") or {}
+            if isinstance(po, dict):
+                exec_info = po.get("execution") or {}
+                if exec_info:
+                    optimizer_excerpt = f"Optimizer Execution: {exec_info}"
 
         content_lines = [
             f"TICKER: {ticker.upper()}",
             f"DATE: {day_str}",
             f"DECISION: {decision_str}",
         ]
-        if rationale:
+        if rationale or optimizer_excerpt:
             content_lines.append("RATIONALE:")
-            content_lines.append(rationale)
+            if rationale:
+                content_lines.append(rationale)
+            if optimizer_excerpt:
+                content_lines.append(optimizer_excerpt)
         file_text = "\n".join(content_lines) + "\n"
 
         try:
@@ -100,18 +112,21 @@ def main():
     )
     parser.add_argument("ticker", help="Ticker symbol (e.g. AAPL)")
     parser.add_argument("start_date", help="Start date YYYY-MM-DD")
-    parser.add_argument("end_date", help="End date YYYY-MM-DD")
-    parser.add_argument("--outdir", default="evalRes", help="Output directory (default: evalRes)")
+    parser.add_argument("end_date", nargs='?', default=None, help="End date YYYY-MM-DD (optional; defaults to start_date)")
+    parser.add_argument("--outdir", default="testing", help="Output directory (default: testing)")
     parser.add_argument("--debug", action="store_true", help="Enable graph debug mode")
     parser.add_argument("--shallow-config", action="store_true", help="Use shallow copy of DEFAULT_CONFIG")
     parser.add_argument("--fail-fast", action="store_true", help="Abort on first error")
     parser.add_argument("--trace", action="store_true", help="Show full tracebacks on errors")
+    parser.add_argument("--single-day", action="store_true", help="Run for a single day (end_date = start_date)")
     args = parser.parse_args()
+
+    resolved_end_date = args.start_date if (args.single_day or not args.end_date) else args.end_date
 
     run_range(
         args.ticker,
         args.start_date,
-        args.end_date,
+        resolved_end_date,
         args.outdir,
         args.debug,
         deep_copy_config=not args.shallow_config,

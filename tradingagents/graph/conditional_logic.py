@@ -15,7 +15,11 @@ class ConditionalLogic:
         """Determine if market analysis should continue."""
         messages = state["messages"]
         last_message = messages[-1]
+        # Avoid repeated tool loops during testing/one-shot runs
+        if state.get("market_tools_used"):
+            return "Msg Clear Market"
         if last_message.tool_calls:
+            print(f"[ {state.get('trade_date','')} ] Routing: tools_market")
             return "tools_market"
         return "Msg Clear Market"
 
@@ -31,6 +35,8 @@ class ConditionalLogic:
         """Determine if macroeconomic analysis should continue."""
         messages = state["messages"]
         last_message = messages[-1]
+        if state.get("macroeconomic_tools_used"):
+            return "Msg Clear Macroeconomic"
         if last_message.tool_calls:
             return "tools_macroeconomic"
         return "Msg Clear Macroeconomic"
@@ -39,7 +45,10 @@ class ConditionalLogic:
         """Determine if social media analysis should continue."""
         messages = state["messages"]
         last_message = messages[-1]
+        if state.get("social_tools_used"):
+            return "Msg Clear Social"
         if last_message.tool_calls:
+            print(f"[ {state.get('trade_date','')} ] Routing: tools_social")
             return "tools_social"
         return "Msg Clear Social"
 
@@ -47,7 +56,10 @@ class ConditionalLogic:
         """Determine if news analysis should continue."""
         messages = state["messages"]
         last_message = messages[-1]
+        if state.get("news_tools_used"):
+            return "Msg Clear News"
         if last_message.tool_calls:
+            print(f"[ {state.get('trade_date','')} ] Routing: tools_news")
             return "tools_news"
         return "Msg Clear News"
 
@@ -55,7 +67,10 @@ class ConditionalLogic:
         """Determine if fundamentals analysis should continue."""
         messages = state["messages"]
         last_message = messages[-1]
+        if state.get("fundamentals_tools_used"):
+            return "Msg Clear Fundamentals"
         if last_message.tool_calls:
+            print(f"[ {state.get('trade_date','')} ] Routing: tools_fundamentals")
             return "tools_fundamentals"
         return "Msg Clear Fundamentals"
     
@@ -71,7 +86,10 @@ class ConditionalLogic:
         """Determine if risk judgment should continue."""
         messages = state["messages"]
         last_message = messages[-1]
+        if state.get("riskjudge_tools_used"):
+            return "Msg Clear Risk Judge"
         if last_message.tool_calls:
+            print(f"[ {state.get('trade_date','')} ] Routing: tools_Risk Judge")
             return "tools_Risk Judge"
         return "Msg Clear Risk Judge"
 

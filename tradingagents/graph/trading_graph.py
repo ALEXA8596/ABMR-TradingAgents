@@ -274,9 +274,23 @@ class TradingAgentsGraph:
 
     def _extract_final_decision(self, final_state: Dict[str, Any]) -> str:
         """Extract the final trading decision from the state."""
-        # Implementation depends on your state structure
-        # This is a placeholder - implement based on your actual state format
-        return final_state.get("trader_investment_plan", "No decision made")
+        # Prefer Portfolio Optimizer execution action if available
+        try:
+            po_state = final_state.get("portfolio_optimization_state")
+            if isinstance(po_state, dict):
+                exec_info = po_state.get("execution") or {}
+                action = exec_info.get("action")
+                if action:
+                    return str(action)
+        except Exception:
+            pass
+
+        # Fallbacks for older flows
+        return (
+            final_state.get("final_trade_decision")
+            or final_state.get("trader_investment_plan")
+            or "No decision made"
+        )
 
     def get_blackboard_context(self, ticker: str) -> Dict[str, Any]:
         """

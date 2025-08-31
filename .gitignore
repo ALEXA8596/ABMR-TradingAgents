@@ -18,4 +18,6 @@ portfolio.example.json
 /evalRes
 portfolio.json
 
+# Added by Assistant: ignore local Polygon key file
+config/polygon_key.txt
 

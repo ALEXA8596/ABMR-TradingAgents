@@ -77,6 +77,8 @@ def create_social_media_analyst(llm, toolkit):
 
         if len(result.tool_calls) == 0:
             report = result.content
+        else:
+            state["social_tools_used"] = True
 
         # Post the generated report to the blackboard
         # Extract recommendation and confidence heuristically
