@@ -9,6 +9,7 @@ from tradingagents.agents import *
 from tradingagents.agents.utils.agent_states import AgentState
 from tradingagents.agents.utils.agent_utils import Toolkit
 from tradingagents.agents.managers.multi_ticker_portfolio_optimizer import create_multi_ticker_portfolio_optimizer
+from tradingagents.agents.managers.portfolio_optimizer import create_portfolio_optimizer
 
 from .conditional_logic import ConditionalLogic
 from datetime import datetime
@@ -148,6 +149,10 @@ class GraphSetup:
             self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
         )
         
+        portfolio_optimizer_node = create_portfolio_optimizer(
+            self.deep_thinking_llm, self.portfolio_optimizer_memory, self.toolkit
+        )
+
         # Create workflow
         workflow = StateGraph(AgentState)
 
@@ -172,6 +177,7 @@ class GraphSetup:
         workflow.add_node("Risk Judge", risk_manager_node)
         workflow.add_node("tools_Risk Judge", tool_nodes["riskJudge"])
         workflow.add_node("Quant Options Manager", quant_options_manager_node)
+        workflow.add_node("Portfolio Optimizer", portfolio_optimizer_node)
 
         # Define edges
         # Start with the first analyst
@@ -282,8 +288,11 @@ class GraphSetup:
             "Risk Judge", "Quant Options Manager",
         )
         
-        # Portfolio optimization - goes directly to END
-        workflow.add_edge("Quant Options Manager", END)
+        # Add Portfolio Optimizer after Quant Options Manager for portfolio analysis
+        workflow.add_edge("Quant Options Manager", "Portfolio Optimizer")
+        
+        # Portfolio optimization - goes to Portfolio Optimizer then END
+        workflow.add_edge("Portfolio Optimizer", END)
 
         # Compile and return
         return workflow.compile()

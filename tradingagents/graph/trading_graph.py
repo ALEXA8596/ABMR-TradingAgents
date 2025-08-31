@@ -326,8 +326,8 @@ class TradingAgentsGraph:
         # Example: If chunk contains portfolio reports, post them to blackboard
         if "portfolio_report" in chunk and chunk["portfolio_report"]:
             for ticker in tickers:
-                self.blackboard_agents["trader"].post_portfolio_report(
-                    ticker=ticker,
+                self.blackboard_agents["trader"].post_portfolio_analysis(
+                    tickers=[ticker],
                     analysis={"report": chunk["portfolio_report"]},
                     confidence="Medium"
                 )
