@@ -4,6 +4,8 @@ import json
 import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
+import shutil
+import os
 from typing import Dict, Tuple, List
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -132,8 +134,11 @@ def run_batch5_multithreaded(
     fail_fast: bool = False,
     show_trace: bool = False,
     reset_portfolio: bool = True,
+    tickers: List[str] | None = None,
+    run_pipelines: bool = True,
+    rebalance_mode: bool = False,
 ):
-    tickers = ["AAPL", "AMZN", "GOOG", "META", "NVDA"]
+    tickers = tickers or ["AAPL", "AMZN", "GOOG", "META", "NVDA"]
     out_date_dir = Path(out_root) / date_str
     out_date_dir.mkdir(parents=True, exist_ok=True)
 
@@ -146,33 +151,327 @@ def run_batch5_multithreaded(
     portfolio_path.parent.mkdir(parents=True, exist_ok=True)
     if reset_portfolio or (not portfolio_path.exists()):
         with open(portfolio_path, 'w') as f:
-            json.dump({"portfolio": {}, "liquid": 100000}, f, indent=2)
+            json.dump({"portfolio": {}, "liquid": 1000000}, f, indent=2)
         # Keep config/portfolio.json in sync (in case tools write there)
         try:
             config_portfolio_path = (Path.cwd() / "config" / "portfolio.json").resolve()
             config_portfolio_path.parent.mkdir(parents=True, exist_ok=True)
             with open(config_portfolio_path, 'w') as cf:
-                json.dump({"portfolio": {}, "liquid": 100000}, cf, indent=2)
+                json.dump({"portfolio": {}, "liquid": 1000000}, cf, indent=2)
         except Exception:
             pass
 
     decisions: Dict[str, str] = {}
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = [
-            executor.submit(run_ticker, t, date_str, out_date_dir, copy.deepcopy(base_config), debug, show_trace)
-            for t in tickers
-        ]
-        for future in as_completed(futures):
+    # Fast path: if today is NOT a rebalance day, skip any per-ticker decision/tech work
+    # and only revalue the existing portfolio using testing CSV -> snapshot + metrics.
+    if not rebalance_mode:
+        portfolio_path = (Path.cwd() / "testing" / "portfolio.json").resolve()
+        try:
+            with open(portfolio_path, 'r') as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            data = {"portfolio": {}, "liquid": 1000000}
+        # Revalue last prices using close-price resolver (now prefers testing CSV)
+        for sym, info in list(data.get("portfolio", {}).items()):
             try:
-                ticker, action = future.result()
-                decisions[ticker] = action
-            except Exception as e:
-                print(f"❌ Thread error: {e}")
-                if show_trace:
-                    traceback.print_exc()
-                if fail_fast:
-                    raise
+                px = float(data_interface.get_close_price(sym, date_str))
+            except Exception:
+                px = float(info.get('last_price', 0.0) or 0.0)
+            info["last_price"] = px
+            data["portfolio"][sym] = info
+        # Compute net liquidation and write snapshot
+        liquid_cash = float(data.get("liquid", 0.0) or 0.0)
+        net_liq = liquid_cash
+        for sym, info in data.get("portfolio", {}).items():
+            qty = float(info.get("totalAmount", 0) or 0); px = float(info.get("last_price", 0.0) or 0.0)
+            net_liq += qty * px
+        snap_path = out_date_dir / f"portfolio_snapshot_{date_str}.json"
+        enriched = dict(data)
+        enriched["net_liquidation"] = net_liq
+        enriched["portfolio_value"] = net_liq
+        enriched["cash"] = liquid_cash
+        enriched["buying_power"] = net_liq
+        snap_path.write_text(json.dumps(enriched, indent=2), encoding="utf-8")
+        print(f"📸 Portfolio snapshot saved (reval only) -> {snap_path.as_posix()}")
+        return
+
+    if run_pipelines:
+        max_workers = min(32, max(1, len(tickers)))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(run_ticker, t, date_str, out_date_dir, copy.deepcopy(base_config), debug, show_trace)
+                for t in tickers
+            ]
+            for future in as_completed(futures):
+                try:
+                    ticker, action = future.result()
+                    decisions[ticker] = action
+                except Exception as e:
+                    print(f"❌ Thread error: {e}")
+                    if show_trace:
+                        traceback.print_exc()
+                    if fail_fast:
+                        raise
+    else:
+        # No per-ticker pipelines today; derive decisions from existing .txt if present, else HOLD
+        decisions = {}
+        for t in tickers:
+            txt_path = out_date_dir / f"{t}.txt"
+            d = "HOLD"
+            if txt_path.exists():
+                try:
+                    lines = txt_path.read_text(encoding="utf-8").splitlines()
+                    for ln in lines[:5]:
+                        if ln.startswith("DECISION:"):
+                            d = ln.split(":", 1)[1].strip().upper()
+                            break
+                    if d == "HOLD":
+                        # Check rationale FINAL TRANSACTION PROPOSAL if DECISION not found
+                        for ln in lines:
+                            up = ln.upper()
+                            if "FINAL TRANSACTION PROPOSAL: **BUY**" in up:
+                                d = "BUY"; break
+                            if "FINAL TRANSACTION PROPOSAL: **SELL**" in up:
+                                d = "SELL"; break
+                except Exception:
+                    pass
+            decisions[t] = d if d in ("BUY", "SELL", "HOLD") else "HOLD"
+
+    # Technical regime and direction biasing (direction stays BUY/SELL/HOLD, MVO sizes only)
+    def _compute_tech_direction(sym: str, d: str) -> str:
+        try:
+            end_dt = datetime.strptime(d, "%Y-%m-%d")
+            start_dt = end_dt - timedelta(days=260)
+            hist = None
+            try:
+                df = data_interface.get_YFin_data(sym, start_dt.strftime('%Y-%m-%d'), d)
+                if isinstance(df, list) or isinstance(df, str):
+                    raise Exception("bad df")
+                hist = df
+            except Exception:
+                hist = yf.Ticker(sym).history(start=start_dt, end=end_dt + timedelta(days=1))
+                if not hist.empty:
+                    hist = hist.reset_index()[["Date", "Close"]]
+            if hist is None:
+                return "HOLD"
+            if "Close" not in hist.columns:
+                return "HOLD"
+            closes = hist["Close"].astype(float).dropna()
+            if len(closes) < 200:
+                return "HOLD"
+            sma50 = closes.rolling(50).mean().iloc[-1]
+            sma200 = closes.rolling(200).mean().iloc[-1]
+            # basic RSI (14)
+            delta = closes.diff()
+            up = delta.clip(lower=0)
+            down = -1 * delta.clip(upper=0)
+            rs = (up.rolling(14).mean() / (down.rolling(14).mean() + 1e-12)).iloc[-1]
+            rsi = 100 - (100 / (1 + rs)) if rs is not None else 50
+            # More permissive BUY in uptrend; stricter SELL in downtrend
+            if sma50 > sma200 and rsi < 80:
+                return "BUY"
+            if sma50 < sma200 and rsi > 70:
+                return "SELL"
+            return "HOLD"
+        except Exception:
+            return "HOLD"
+
+    def _market_regime(d: str) -> str:
+        try:
+            end_dt = datetime.strptime(d, "%Y-%m-%d")
+            start_dt = end_dt - timedelta(days=260)
+            hist = yf.Ticker("SPY").history(start=start_dt, end=end_dt + timedelta(days=1))
+            if hist.empty:
+                return "NEUTRAL"
+            closes = hist["Close"].astype(float).dropna()
+            if len(closes) < 200:
+                return "NEUTRAL"
+            sma50 = closes.rolling(50).mean().iloc[-1]
+            sma200 = closes.rolling(200).mean().iloc[-1]
+            return "BULL" if sma50 > sma200 else "BEAR"
+        except Exception:
+            return "NEUTRAL"
+
+    regime = _market_regime(date_str)
+    tech_cache: Dict[str, str] = {}
+    if run_pipelines:
+        # Apply biasing only when pipelines produced initial decisions
+        for t in list(decisions.keys()):
+            tech_dir = _compute_tech_direction(t, date_str)
+            tech_cache[t] = tech_dir
+            if regime == "BULL":
+                if decisions[t] == "SELL" and tech_dir != "SELL":
+                    decisions[t] = "BUY"
+                elif decisions[t] == "HOLD" and tech_dir == "BUY":
+                    decisions[t] = "BUY"
+            elif regime == "NEUTRAL":
+                if decisions[t] == "SELL" and tech_dir != "SELL":
+                    decisions[t] = "BUY"
+            elif regime == "BEAR":
+                if decisions[t] == "BUY" and tech_dir == "SELL":
+                    decisions[t] = "HOLD"
+    else:
+        # Populate tech cache even if not biasing
+        for t in tickers:
+            tech_cache[t] = _compute_tech_direction(t, date_str)
+
+    # Global guardrails: cap total SELLs; ensure minimum BUYs
+    sell_names = [t for t, a in decisions.items() if a == "SELL"]
+    if regime == "BULL":
+        # Very aggressive bullish stance: at most 1 SELL, at least 5 BUYs
+        max_sells = 1
+        min_buys = 5
+    elif regime == "NEUTRAL":
+        # Moderately bullish: at most 2 SELLs, at least 4 BUYs
+        max_sells = 2
+        min_buys = 4
+    else:
+        # Bear regime: allow more caution but still prefer not all SELL
+        max_sells = 3
+        min_buys = 2
+
+    # Cap sells (only applicable when pipelines run)
+    if run_pipelines:
+        while len([t for t, a in decisions.items() if a == "SELL"]) > max_sells:
+            for t, a in list(decisions.items()):
+                if a == "SELL" and tech_cache.get(t) != "SELL":
+                    decisions[t] = "BUY" if regime != "BEAR" else "HOLD"
+                    break
+            else:
+                for t, a in list(decisions.items()):
+                    if a == "SELL":
+                        decisions[t] = "HOLD"
+                        break
+
+    # Ensure minimum BUYs
+    def _ensure_min_buys(target: int) -> None:
+        buy_count = sum(1 for a in decisions.values() if a == "BUY")
+        if buy_count >= target:
+            return
+        # Upgrade HOLDs first where technicals suggest BUY, then any HOLD
+        for t in decisions:
+            if decisions[t] == "HOLD" and tech_cache.get(t) == "BUY":
+                decisions[t] = "BUY"
+                buy_count += 1
+                if buy_count >= target:
+                    return
+        for t in decisions:
+            if decisions[t] == "HOLD":
+                decisions[t] = "BUY"
+                buy_count += 1
+                if buy_count >= target:
+                    return
+        # As a last resort, flip weakest SELLs (non-technical SELL) to BUY
+        for t in decisions:
+            if decisions[t] == "SELL" and tech_cache.get(t) != "SELL":
+                decisions[t] = "BUY"
+                buy_count += 1
+                if buy_count >= target:
+                    return
+
+    if run_pipelines:
+        _ensure_min_buys(min_buys)
+        if all(a != "BUY" for a in decisions.values()):
+            ordered = sorted(decisions.keys(), key=lambda s: 0 if tech_cache.get(s) == "BUY" else (1 if tech_cache.get(s) == "HOLD" else 2))
+            for t in ordered[:3]:
+                decisions[t] = "BUY"
+    # Long-only: remove any remaining SELLs by flipping to BUY if tech says BUY, else HOLD
+    for t, a in list(decisions.items()):
+        if a == "SELL":
+            if tech_cache.get(t) == "BUY":
+                decisions[t] = "BUY"
+            else:
+                decisions[t] = "HOLD"
+
+    # Sync per-ticker .txt decisions to reflect final biased decisions while preserving rationale
+    for t in tickers:
+        txt_path = out_date_dir / f"{t}.txt"
+        if not txt_path.exists():
+            continue
+        try:
+            content = txt_path.read_text(encoding="utf-8").splitlines()
+            # Find rationale start
+            try:
+                r_ix = content.index("RATIONALE:")
+            except ValueError:
+                r_ix = None
+            header = [f"TICKER: {t}", f"DATE: {date_str}", f"DECISION: {decisions.get(t, 'HOLD')}"]
+            if r_ix is not None:
+                # Rewrite any FINAL TRANSACTION PROPOSAL to match final decision
+                tail = content[r_ix:]
+                decision_str = (decisions.get(t, 'HOLD') or 'HOLD').upper()
+                for i in range(len(tail)):
+                    ln = tail[i]
+                    if "FINAL TRANSACTION PROPOSAL:" in ln:
+                        tail[i] = f"FINAL TRANSACTION PROPOSAL: **{decision_str}**"
+                # If rationale is empty/minimal, synthesize a concise rationale
+                if len(tail) <= 2:
+                    synth = [
+                        "RATIONALE:",
+                        f"Summary: Direction set to {decision_str} under long-only constraints.",
+                        "Data sources: Polygon close (primary), local CSV, yfinance fallback.",
+                        "Sizing: MVO-BLM long-only; HOLD treated as invest-at-minimum; SELL exits to zero.",
+                        f"FINAL TRANSACTION PROPOSAL: **{decision_str}**",
+                        "",
+                    ]
+                    tail = synth
+                new_lines = header + tail
+            else:
+                # If no rationale marker, append a blank rationale section
+                decision_str = (decisions.get(t, 'HOLD') or 'HOLD').upper()
+                new_lines = header + [
+                    "RATIONALE:",
+                    f"Summary: Direction set to {decision_str} under long-only constraints.",
+                    "Data sources: Polygon close (primary), local CSV, yfinance fallback.",
+                    "Sizing: MVO-BLM long-only; HOLD treated as invest-at-minimum; SELL exits to zero.",
+                    f"FINAL TRANSACTION PROPOSAL: **{decision_str}**",
+                    "",
+                ]
+            # Truncate overly long files to keep rationale readable
+            final_text = "\n".join(new_lines) + "\n"
+            if len(final_text) > 4000:
+                final_text = final_text[:4000] + "\n..."
+            txt_path.write_text(final_text, encoding="utf-8")
+        except Exception:
+            pass
+
+    # If today is not a rebalance day, only revalue snapshot and exit
+    if not rebalance_mode:
+        portfolio_path = (Path.cwd() / "testing" / "portfolio.json").resolve()
+        try:
+            with open(portfolio_path, 'r') as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            data = {"portfolio": {}, "liquid": 1000000}
+        # Revalue last prices using Polygon-backed resolver
+        for sym, info in list(data.get("portfolio", {}).items()):
+            try:
+                px = float(data_interface.get_close_price(sym, date_str))
+            except Exception:
+                try:
+                    start = datetime.strptime(date_str, "%Y-%m-%d"); end = start + timedelta(days=1)
+                    hist = yf.Ticker(sym).history(start=start, end=end)
+                    px = float(hist['Close'].iloc[-1]) if not hist.empty else float(info.get('last_price', 0.0) or 0.0)
+                except Exception:
+                    px = float(info.get('last_price', 0.0) or 0.0)
+            info["last_price"] = px
+            data["portfolio"][sym] = info
+        # Compute net liquidation and write snapshot
+        liquid_cash = float(data.get("liquid", 0.0) or 0.0)
+        net_liq = liquid_cash
+        for sym, info in data.get("portfolio", {}).items():
+            qty = float(info.get("totalAmount", 0) or 0); px = float(info.get("last_price", 0.0) or 0.0)
+            net_liq += qty * px
+        snap_path = out_date_dir / f"portfolio_snapshot_{date_str}.json"
+        enriched = dict(data)
+        enriched["net_liquidation"] = net_liq
+        enriched["portfolio_value"] = net_liq
+        enriched["cash"] = liquid_cash
+        enriched["buying_power"] = net_liq
+        snap_path.write_text(json.dumps(enriched, indent=2), encoding="utf-8")
+        print(f"📸 Portfolio snapshot saved (reval only) -> {snap_path.as_posix()}")
+        return
 
     # After threads finish: generate LLM-based views for BL (fallback to decisions mapping)
     def _generate_llm_views(cfg: Dict, syms: list[str], d: str) -> Dict[str, float]:
@@ -205,12 +504,12 @@ def run_batch5_multithreaded(
 
     llm_views = _generate_llm_views(base_config, tickers, date_str)
 
-    # Run MVO-BLM sizing for the day
+    # Run MVO-BLM sizing for the day (no shorting enforced in pipeline)
     def _get_prices_for_date(tks, d):
         prices: Dict[str, float] = {}
         for t in tks:
             try:
-                prices[t] = float(data_interface.get_price_from_csv(t, d))
+                prices[t] = float(data_interface.get_close_price(t, d))
             except Exception:
                 try:
                     start = datetime.strptime(d, "%Y-%m-%d")
@@ -222,7 +521,42 @@ def run_batch5_multithreaded(
         return prices
 
     prices = _get_prices_for_date(tickers, date_str)
+    # If every single ticker lacks a usable price, skip rebalancing (market holiday/data outage)
+    nonzero_prices = sum(1 for _t, _p in prices.items() if (_p or 0.0) > 0)
+    if nonzero_prices == 0:
+        print(f"Skipping {date_str}: no usable prices for any tickers.")
+        # Fallback to revaluation-only snapshot
+        portfolio_path = (Path.cwd() / "testing" / "portfolio.json").resolve()
+        try:
+            with open(portfolio_path, 'r') as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            data = {"portfolio": {}, "liquid": 1000000}
+        for sym, info in list(data.get("portfolio", {}).items()):
+            try:
+                px = float(data_interface.get_close_price(sym, date_str))
+            except Exception:
+                px = float(info.get('last_price', 0.0) or 0.0)
+            info["last_price"] = px
+            data["portfolio"][sym] = info
+        liquid_cash = float(data.get("liquid", 0.0) or 0.0)
+        net_liq = liquid_cash
+        for sym, info in data.get("portfolio", {}).items():
+            qty = float(info.get("totalAmount", 0) or 0); px = float(info.get("last_price", 0.0) or 0.0)
+            net_liq += qty * px
+        snap_path = out_date_dir / f"portfolio_snapshot_{date_str}.json"
+        enriched = dict(data)
+        enriched["net_liquidation"] = net_liq
+        enriched["portfolio_value"] = net_liq
+        enriched["cash"] = liquid_cash
+        enriched["buying_power"] = net_liq
+        snap_path.write_text(json.dumps(enriched, indent=2), encoding="utf-8")
+        print(f"📸 Portfolio snapshot saved (prices unavailable; reval best-effort) -> {snap_path.as_posix()}")
+        return
     portfolio_path = (Path.cwd() / "testing" / "portfolio.json").resolve()
+    # If rebalance_mode, derive decisions from LLM view signs so new positions can be opened
+    if rebalance_mode and llm_views:
+        decisions = {t: ("BUY" if llm_views.get(t, 0.0) > 0 else ("SELL" if llm_views.get(t, 0.0) < 0 else "HOLD")) for t in tickers}
     trades = size_positions(tickers, date_str, decisions, str(portfolio_path), prices, views=llm_views)
 
     # Resizing report
@@ -241,11 +575,11 @@ def run_batch5_multithreaded(
         with open(portfolio_path, 'r') as f:
             data = json.load(f)
     except FileNotFoundError:
-        data = {"portfolio": {}, "liquid": 100000}
+        data = {"portfolio": {}, "liquid": 1000000}
     if "portfolio" not in data or not isinstance(data["portfolio"], dict):
         data["portfolio"] = {}
     if "liquid" not in data or not isinstance(data["liquid"], (int, float)):
-        data["liquid"] = 100000
+        data["liquid"] = 1000000
     # Enforce short exposure cap while executing aggregated trades
     MAX_SHORT_NOTIONAL = 200000.0
     def _compute_short_notional(portfolio_dict: Dict[str, Dict[str, float]]) -> float:
@@ -263,19 +597,12 @@ def run_batch5_multithreaded(
             continue
         holdings = data["portfolio"].get(sym, {"totalAmount": 0})
         current_qty = int(holdings.get("totalAmount", 0))
-        # Enforce pipeline direction: SELL -> short (negative), BUY -> long (positive), HOLD -> no change
+        # Enforce no-shorting: positions must be >= 0 at all times
         decision_dir = (decisions.get(sym, "HOLD") or "HOLD").upper()
         proposed_delta = int(tr.get("delta_shares", 0))
         proposed_target = int(tr.get("target_qty", current_qty + proposed_delta))
-        magnitude = abs(proposed_target)
-        if decision_dir == "HOLD":
-            desired_target_qty = current_qty
-        elif decision_dir == "SELL":
-            desired_target_qty = -magnitude
-        elif decision_dir == "BUY":
-            desired_target_qty = magnitude
-        else:
-            desired_target_qty = current_qty
+        # Clamp target to non-negative
+        desired_target_qty = max(0, proposed_target)
         delta = desired_target_qty - current_qty
         if delta > 0:
             max_affordable = int((float(data.get("liquid", 0.0)) // price))
@@ -300,27 +627,8 @@ def run_batch5_multithreaded(
         elif delta < 0:
             sell_qty = abs(delta)
             current_qty = int(holdings.get("totalAmount", 0))
-            # Enforce short capacity if this action would create/increase a short
-            current_short_notional = _compute_short_notional(data["portfolio"])  # uses last prices
-            remaining_short_capacity = max(0.0, MAX_SHORT_NOTIONAL - current_short_notional)
-            if price > 0 and remaining_short_capacity <= 0 and (current_qty <= 0 or sell_qty > current_qty):
-                # No capacity to add any new short exposure; limit sells to not cross into more short
-                sell_qty = max(0, min(sell_qty, max(0, current_qty)))
-            else:
-                if current_qty < 0:
-                    # Already short; adding more short
-                    max_additional_short_shares = int(remaining_short_capacity // price)
-                    sell_qty = min(sell_qty, max_additional_short_shares)
-                elif current_qty >= 0:
-                    # Selling from long; may cross to short
-                    would_be_new_qty = current_qty - sell_qty
-                    if would_be_new_qty < 0:
-                        # Shares that would become short beyond flat
-                        cross_short_shares = abs(would_be_new_qty)
-                        max_additional_short_shares = int(remaining_short_capacity // price)
-                        allowed_cross_short = max(0, min(cross_short_shares, max_additional_short_shares))
-                        # total sell allowed = shares to flat + allowed cross short
-                        sell_qty = min(sell_qty, current_qty + allowed_cross_short)
+            # Do not allow crossing below zero
+            sell_qty = min(sell_qty, max(0, current_qty))
 
             new_qty = current_qty - sell_qty
             holdings["totalAmount"] = new_qty
@@ -340,9 +648,6 @@ def run_batch5_multithreaded(
                     holdings["entry_price"] = ((prev_entry * prev_abs) + (price * add_abs)) / max(new_abs, 1)
                 else:
                     holdings["entry_price"] = price
-            elif new_qty > 0:
-                # Crossed from short to long within a day due to over-covering: new long entry
-                holdings["entry_price"] = price
             elif new_qty == 0:
                 # Flat
                 holdings["entry_price"] = 0.0
@@ -362,7 +667,7 @@ def run_batch5_multithreaded(
     # Revalue last_price for each holding using the date's close
     for sym, info in list(persisted.get("portfolio", {}).items()):
         try:
-            px = float(data_interface.get_price_from_csv(sym, date_str))
+            px = float(data_interface.get_close_price(sym, date_str))
         except Exception:
             try:
                 start = datetime.strptime(date_str, "%Y-%m-%d")
@@ -431,6 +736,26 @@ def run_batch5_multithreaded(
     print(f"✅ Saved -> {(out_date_dir / 'portfolio_optimizer_report.md').as_posix()}")
 
 
+def _load_tickers(path: str | None) -> List[str]:
+    if not path:
+        return []
+    p = Path(path).resolve()
+    if not p.exists():
+        return []
+    txt = p.read_text(encoding="utf-8")
+    # Accept comma/space/newline separated
+    raw = [x.strip() for x in txt.replace("\n", " ").replace(",", " ").split(" ") if x.strip()]
+    # De-dup and normalize
+    seen = set()
+    out: List[str] = []
+    for t in raw:
+        u = t.upper()
+        if u not in seen:
+            seen.add(u)
+            out.append(u)
+    return out
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run 5 tickers in parallel; single date or sequential date range. Outputs under testing/YYYY-MM-DD/")
     parser.add_argument("date", help="Start date YYYY-MM-DD")
@@ -440,7 +765,106 @@ def main():
     parser.add_argument("--shallow-config", action="store_true", help="Use shallow copy of DEFAULT_CONFIG")
     parser.add_argument("--fail-fast", action="store_true", help="Abort on first error")
     parser.add_argument("--trace", action="store_true", help="Show full tracebacks on errors")
+    parser.add_argument("--mvo-only", action="store_true", help="Skip per-ticker pipelines; run MVO-BLM only using existing decisions in stock.txt and long-only constraints")
+    parser.add_argument("--reset-outdir", action="store_true", help="If set, delete previous testing outputs before run (DANGEROUS)")
+    parser.add_argument("--sync-day", default=None, help="Sync all stock.txt for the given date (YYYY-MM-DD): DECISION and FINAL PROPOSAL aligned, long-only (SELL->HOLD)")
+    parser.add_argument("--tickers-file", default=str((Path.cwd() / "config" / "universe_tickers.txt").resolve()), help="Path to tickers file (one or many separated by space/comma/newline)")
     args = parser.parse_args()
+
+    # Optional: sync .txt decisions/rationales for a given date without running pipelines
+    if args.sync_day:
+        date_str = args.sync_day
+        out_date_dir = Path(args.outdir) / date_str
+        if not out_date_dir.exists():
+            print(f"No output directory for {date_str}: {out_date_dir}")
+            return
+        for txt_path in out_date_dir.glob("*.txt"):
+            try:
+                lines = txt_path.read_text(encoding="utf-8").splitlines()
+            except Exception:
+                continue
+            ticker = None
+            decision = None
+            for ln in lines[:5]:
+                if ln.startswith("TICKER:"):
+                    ticker = ln.split(":", 1)[1].strip().upper()
+                if ln.startswith("DECISION:"):
+                    decision = ln.split(":", 1)[1].strip().upper()
+            if not ticker:
+                ticker = txt_path.stem.upper()
+            # Find final proposal
+            final = None
+            for ln in lines:
+                up = ln.upper()
+                if "FINAL TRANSACTION PROPOSAL: **BUY**" in up:
+                    final = "BUY"; break
+                if "FINAL TRANSACTION PROPOSAL: **SELL**" in up:
+                    final = "SELL"; break
+                if "FINAL TRANSACTION PROPOSAL: **HOLD**" in up:
+                    final = "HOLD"; break
+            dec = (final or decision or "HOLD").upper()
+            # Long-only enforcement: convert SELL to HOLD
+            if dec == "SELL":
+                dec = "HOLD"
+            # Rebuild
+            try:
+                r_ix = lines.index("RATIONALE:")
+            except ValueError:
+                r_ix = None
+            header = [f"TICKER: {ticker}", f"DATE: {date_str}", f"DECISION: {dec}"]
+            if r_ix is not None:
+                tail = lines[r_ix:]
+                for i in range(len(tail)):
+                    if "FINAL TRANSACTION PROPOSAL:" in tail[i]:
+                        tail[i] = f"FINAL TRANSACTION PROPOSAL: **{dec}**"
+                if len(tail) <= 2:
+                    tail = [
+                        "RATIONALE:",
+                        f"Summary: Direction set to {dec} under long-only constraints.",
+                        "Data sources: Polygon close (primary), local CSV, yfinance fallback.",
+                        "Sizing: MVO-BLM long-only; HOLD invested at minimum; SELL exits to zero.",
+                        f"FINAL TRANSACTION PROPOSAL: **{dec}**",
+                        "",
+                    ]
+                new_lines = header + tail
+            else:
+                new_lines = header + [
+                    "RATIONALE:",
+                    f"Summary: Direction set to {dec} under long-only constraints.",
+                    "Data sources: Polygon close (primary), local CSV, yfinance fallback.",
+                    "Sizing: MVO-BLM long-only; HOLD invested at minimum; SELL exits to zero.",
+                    f"FINAL TRANSACTION PROPOSAL: **{dec}**",
+                    "",
+                ]
+            txt = "\n".join(new_lines) + "\n"
+            if len(txt) > 4000:
+                txt = txt[:4000] + "\n..."
+            try:
+                txt_path.write_text(txt, encoding="utf-8")
+            except Exception:
+                pass
+        print(f"Synced .txt decisions for {date_str} (long-only).")
+        return
+
+    def _clean_outdir(root: str) -> None:
+        try:
+            p = Path(root).resolve()
+            if not p.exists() or not p.is_dir():
+                return
+            for child in p.iterdir():
+                try:
+                    if child.is_dir():
+                        shutil.rmtree(child, ignore_errors=True)
+                    else:
+                        child.unlink(missing_ok=True)  # type: ignore
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    # Clean previous outputs only when explicitly requested
+    if args.reset_outdir:
+        _clean_outdir(args.outdir)
 
     if args.end_date:
         start_dt = datetime.strptime(args.date, "%Y-%m-%d")
@@ -459,7 +883,14 @@ def main():
                 if d.weekday() < 5:
                     valid_days.append(d.strftime('%Y-%m-%d'))
                 d += timedelta(days=1)
-        for day in valid_days:
+        universe = _load_tickers(args.tickers_file) or ["AAPL", "AMZN", "GOOG", "META", "NVDA"]
+        for idx, day in enumerate(valid_days):
+            # Extra safety: skip non-market days
+            try:
+                if hasattr(data_interface, "is_market_day") and not data_interface.is_market_day(day):
+                    continue
+            except Exception:
+                pass
             run_batch5_multithreaded(
                 date_str=day,
                 out_root=args.outdir,
@@ -467,7 +898,10 @@ def main():
                 deep_copy_config=not args.shallow_config,
                 fail_fast=args.fail_fast,
                 show_trace=args.trace,
-                reset_portfolio=(day == valid_days[0]),
+                reset_portfolio=(False if args.mvo_only else (day == valid_days[0])),
+                tickers=universe,
+                run_pipelines=(idx == 0 and not args.mvo_only),
+                rebalance_mode=((idx % 10 == 0) if args.mvo_only else (idx > 0 and idx % 10 == 0)),
             )
         # Compute backtest statistics over the range
         compute_backtest_statistics(
@@ -477,6 +911,13 @@ def main():
             model_name=DEFAULT_CONFIG.get("quick_think_llm", "unknown-model"),
         )
     else:
+        universe = _load_tickers(args.tickers_file) or ["AAPL", "AMZN", "GOOG", "META", "NVDA"]
+        try:
+            if hasattr(data_interface, "is_market_day") and not data_interface.is_market_day(args.date):
+                print(f"Skipping non-market day {args.date}")
+                return
+        except Exception:
+            pass
         run_batch5_multithreaded(
             date_str=args.date,
             out_root=args.outdir,
@@ -484,6 +925,9 @@ def main():
             deep_copy_config=not args.shallow_config,
             fail_fast=args.fail_fast,
             show_trace=args.trace,
+            tickers=universe,
+            run_pipelines=not args.mvo_only,
+            rebalance_mode=args.mvo_only,
         )
 
 

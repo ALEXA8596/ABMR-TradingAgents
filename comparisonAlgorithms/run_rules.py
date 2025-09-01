@@ -153,7 +153,7 @@ def main():
     parser.add_argument("--out", help="Optional output JSON path", default=None)
     parser.add_argument("--start-date", dest="start_date", help="Start date YYYY-MM-DD for 30-day (or --days) simulation; if omitted runs single snapshot")
     parser.add_argument("--days", type=int, default=30, help="Number of trading days to simulate (default 30)")
-    parser.add_argument("--budget", type=float, default=100000.0, help="Initial budget (default 100000)")
+    parser.add_argument("--budget", type=float, default=1000000.0, help="Initial budget (default 1000000)")
     parser.add_argument("--workers", type=int, default=None, help="Parallel worker threads (default len(rules))")
     args = parser.parse_args()
 

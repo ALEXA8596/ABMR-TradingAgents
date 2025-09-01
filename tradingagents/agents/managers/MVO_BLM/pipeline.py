@@ -10,7 +10,7 @@ from .mvo import mean_variance_optimize
 def ensure_portfolio_initialized(portfolio_path: str):
     if not os.path.exists(portfolio_path):
         with open(portfolio_path, 'w') as f:
-            json.dump({"portfolio": {}, "liquid": 100000}, f, indent=2)
+            json.dump({"portfolio": {}, "liquid": 1000000}, f, indent=2)
 
 
 def read_portfolio(portfolio_path: str) -> Dict:
@@ -57,7 +57,7 @@ def size_positions(
     portfolio_path: str,
     prices: Dict[str, float],
     lookback_days: int = 252,
-    allow_short: bool = True,
+    allow_short: bool = False,
     min_lot: int = 1,
     views: Dict[str, float] | None = None,
 ) -> Dict[str, Dict]:
@@ -87,16 +87,17 @@ def size_positions(
         tickers_aligned,
     )
 
-    w = mean_variance_optimize(mu_bl, cov_bl, long_only=not allow_short)
+    w = mean_variance_optimize(mu_bl, cov_bl, long_only=True)
 
     # Compute target positions by weight
     total_cash = float(portfolio.get('liquid', 0))
     current_value = sum(float(holdings.get(t, {}).get('totalAmount', 0)) * float(prices.get(t, 0.0)) for t in tickers_aligned)
     portfolio_value = total_cash + current_value
     if portfolio_value <= 0:
-        portfolio_value = 100000.0
+        portfolio_value = 1000000.0
 
-    targets = {t: w_i * portfolio_value for t, w_i in zip(tickers_aligned, w)}
+    # Long-only targets (no negative weights)
+    targets = {t: max(0.0, w_i) * portfolio_value for t, w_i in zip(tickers_aligned, w)}
 
     # Translate targets to trades respecting rules
     trades = {}
@@ -105,25 +106,31 @@ def size_positions(
         if price <= 0:
             continue
         target_value = targets[t]
-        target_qty = int(target_value // price)
+        target_qty = max(0, int(target_value // price))
         curr_qty = int(holdings.get(t, {}).get('totalAmount', 0))
 
         decision = (decisions.get(t, 'HOLD') or '').upper()
-        if curr_qty != 0:
-            # Already in position: resize only by moving towards target quantity
-            delta = target_qty - curr_qty
-        else:
-            # No position: obey decision direction
+        # SELL means zero target in no-shorting regime
+        if decision == 'SELL':
+            target_qty = 0
+        if curr_qty > 0:
+            # Already long: move toward non-negative target; SELL can only reduce but never below 0
             if decision == 'SELL':
-                # short
-                # enforce minimum lot if computed 0
-                qty = abs(target_qty) if abs(target_qty) > 0 else max(min_lot, 1)
-                delta = -qty
+                # Fully exit
+                delta = -curr_qty
             elif decision == 'BUY':
-                qty = abs(target_qty) if abs(target_qty) > 0 else max(min_lot, 1)
-                delta = qty
+                delta = target_qty - curr_qty
             else:
-                delta = 0
+                delta = target_qty - curr_qty
+        elif curr_qty <= 0:
+            # Flat or was short: never create/keep shorts
+            if decision in ('BUY', 'HOLD'):
+                # Treat HOLD as invest-at-minimum if optimizer suggests 0
+                qty = target_qty if target_qty > 0 else max(min_lot, 1)
+                delta = max(0, qty)
+            else:
+                # SELL/HOLD when flat or short -> go to 0
+                delta = -curr_qty if curr_qty < 0 else 0
 
         trades[t] = {"delta_shares": delta, "target_qty": target_qty, "current_qty": curr_qty, "price": price}
 

@@ -434,7 +434,7 @@ class Toolkit:
         if not stockportfolio:
             return f"No holdings for {ticker} in portfolio."
 
-        max_shares = round(stockportfolio.get('liquid', 0) / interface.get_price_from_csv(ticker, date), 2)
+        max_shares = round(stockportfolio.get('liquid', 0) / interface.get_close_price(ticker, date), 2)
 
         returned = f"""
 # Portfolio
@@ -449,7 +449,7 @@ class Toolkit:
     def get_price(ticker: Annotated[str, "Ticker of the company to get price for"], date: Annotated[str, "Date in yyyy-mm-dd format"]):
         """Retrieve the price for a given ticker on a given date from local CSV data."""
         try:
-            price = interface.get_price_from_csv(ticker, date)
+            price = interface.get_close_price(ticker, date)
             return f"Price for {ticker} on {date} is ${price:.2f}."
         except Exception as e:
             return f"Error retrieving price for {ticker} on {date}: {str(e)}"
@@ -469,26 +469,19 @@ class Toolkit:
         portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json")
         if not os.path.exists(portfolio_path):
             with open(portfolio_path, "w") as f:
-                json.dump({"portfolio": {}, "liquid": 100000}, f)
+                json.dump({"portfolio": {}, "liquid": 1000000}, f)
         data = json.load(open(portfolio_path, "r"))
         if "portfolio" not in data or not isinstance(data["portfolio"], dict):
             data["portfolio"] = {}
         holdings = data["portfolio"].get(ticker, {"totalAmount": 0})
-        # Fetch current price
-        # Prefer offline CSV price for the specific date; fallback to yfinance date-bounded
+        # Fetch current price via Polygon-backed resolver (with internal fallbacks)
         try:
-            current_price = float(interface.get_price_from_csv(ticker, date))
+            current_price = float(interface.get_close_price(ticker, date))
         except Exception:
-            try:
-                start = datetime.strptime(date, "%Y-%m-%d")
-                end = start + timedelta(days=1)
-                hist = yf.Ticker(ticker).history(start=start, end=end)
-                current_price = float(hist["Close"].iloc[-1]) if not hist.empty else 0.0
-            except Exception:
-                current_price = 0.0
+            current_price = 0.0
         # Update liquidity if present
         if "liquid" not in data:
-            data["liquid"] = 100000
+            data["liquid"] = 1000000
         cost = quantity * current_price
         if data["liquid"] < cost and current_price > 0:
             quantity = int(data["liquid"] // current_price)
@@ -537,25 +530,17 @@ class Toolkit:
         portfolio_path = os.path.join(os.path.dirname(__file__), "../../../config/portfolio.json")
         if not os.path.exists(portfolio_path):
             with open(portfolio_path, "w") as f:
-                json.dump({"portfolio": {}, "liquid": 100000}, f)
+                json.dump({"portfolio": {}, "liquid": 1000000}, f)
         data = json.load(open(portfolio_path, "r"))
         if "portfolio" not in data or not isinstance(data["portfolio"], dict):
             data["portfolio"] = {}
         holdings = data["portfolio"].get(ticker, {"totalAmount": 0})
-        # update last_price if available
-        # Update last_price using offline CSV where possible
+        # Update last_price using Polygon-backed resolver
         try:
-            current_price = float(interface.get_price_from_csv(ticker, date))
+            current_price = float(interface.get_close_price(ticker, date))
             holdings["last_price"] = current_price
         except Exception:
-            try:
-                start = datetime.strptime(date, "%Y-%m-%d")
-                end = start + timedelta(days=1)
-                hist = yf.Ticker(ticker).history(start=start, end=end)
-                if not hist.empty:
-                    holdings["last_price"] = float(hist["Close"].iloc[-1])
-            except Exception:
-                pass
+            pass
         data["portfolio"][ticker] = holdings
         with open(portfolio_path, "w") as f:
             json.dump(data, f, indent=2)
@@ -591,17 +576,11 @@ class Toolkit:
         if quantity <= 0:
             return "Quantity must be positive."
         sell_qty = min(quantity, current_shares)
-        # Prefer offline CSV price for the specific date; fallback to yfinance date-bounded
+        # Get price via Polygon-backed resolver
         try:
-            current_price = float(interface.get_price_from_csv(ticker, date))
+            current_price = float(interface.get_close_price(ticker, date))
         except Exception:
-            try:
-                start = datetime.strptime(date, "%Y-%m-%d")
-                end = start + timedelta(days=1)
-                hist = yf.Ticker(ticker).history(start=start, end=end)
-                current_price = float(hist["Close"].iloc[-1]) if not hist.empty else 0.0
-            except Exception:
-                current_price = 0.0
+            current_price = 0.0
         remaining = int(current_shares - sell_qty)
         prev_qty = int(current_shares)
         holdings["totalAmount"] = remaining

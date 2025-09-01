@@ -7,11 +7,13 @@ from .finnhub_utils import get_data_in_range
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from pathlib import Path
 import json
 import os
 import pandas as pd
 from tqdm import tqdm
 import yfinance as yf
+import requests
 from openai import OpenAI
 from .config import get_config, set_config, DATA_DIR
 
@@ -88,6 +90,149 @@ def get_price_from_csv(
             raise Exception(f"No price found for {ticker} on {date}")
     price = float(row.iloc[0]["Close"])
     return price
+
+
+def get_polygon_close_price(ticker: str, date: str) -> float:
+    """
+    Fetch the official close from Polygon for a given ticker/date.
+    Uses env POLYGON_API_KEY if set; otherwise falls back to provided key.
+    """
+    key = os.getenv("POLYGON_API_KEY") or "TY7U3esnUP3PvWVVLLKsH_SrlnNFGSnp"
+    url = f"https://api.polygon.io/v1/open-close/{ticker.upper()}/{date}?adjusted=true&apiKey={key}"
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        close_px = data.get("close")
+        if close_px is None:
+            raise Exception("no close in polygon response")
+        return float(close_px)
+    except Exception as e:
+        raise Exception(f"Polygon price fetch failed for {ticker} on {date}: {e}")
+
+
+def _testing_prices_path() -> Path:
+    return (Path.cwd() / "testing" / "stock_prices.csv").resolve()
+
+
+def get_close_from_testing_csv(ticker: str, date: str) -> float:
+    """
+    Preferential price resolver that reads testing/stock_prices.csv.
+
+    Supports two formats:
+    - Long format: columns include [date, ticker, close] (case-insensitive, underscores/spaces allowed)
+    - Wide format: columns include [date, <TICKER>, ...] with each ticker as a column of closes
+    """
+    csv_path = _testing_prices_path()
+    if not csv_path.exists():
+        raise FileNotFoundError(str(csv_path))
+
+    df_raw = pd.read_csv(csv_path, low_memory=False)
+    # Normalize columns: lower-case, strip, replace spaces with underscores
+    norm_cols = {c: str(c).strip().lower().replace(" ", "_") for c in df_raw.columns}
+    df = df_raw.rename(columns=norm_cols)
+
+    # Ensure a date-like column exists
+    date_col = None
+    for cand in ("date", "day", "dt"):  # permissive
+        if cand in df.columns:
+            date_col = cand
+            break
+    if date_col is None:
+        # try index-based date if provided without header
+        if 0 in df.columns:
+            date_col = 0  # type: ignore
+        else:
+            raise ValueError("testing/stock_prices.csv: missing date column")
+
+    # Long format path
+    has_ticker = any(c in df.columns for c in ("ticker", "symbol"))
+    has_close = any(c in df.columns for c in ("close", "adj_close", "adj_close_", "adjclose"))
+    ticker_u = ticker.upper()
+    date_str = str(date).strip()[:10]
+
+    if has_ticker and has_close:
+        tcol = "ticker" if "ticker" in df.columns else "symbol"
+        ccol = "close" if "close" in df.columns else ("adj_close" if "adj_close" in df.columns else ("adjclose" if "adjclose" in df.columns else "close"))
+        # Normalize values for matching
+        df[date_col] = pd.to_datetime(df[date_col], errors="coerce").dt.strftime("%Y-%m-%d")
+        df[tcol] = df[tcol].astype(str).str.upper().str.strip()
+        row = df[(df[tcol] == ticker_u) & (df[date_col] == date_str)]
+        if row.empty:
+            raise Exception(f"No CSV price for {ticker_u} on {date_str}")
+        val = row.iloc[0][ccol]
+        if pd.isna(val):
+            raise Exception(f"NaN CSV price for {ticker_u} on {date_str}")
+        return float(val)
+
+    # Wide format path: one column per ticker
+    # Try exact match, then case-insensitive match, then variants replacing dots with underscores and vice versa
+    col_candidates = [
+        ticker_u,
+        ticker_u.replace(".", "_"),
+        ticker_u.replace("_", "."),
+    ]
+    # Build mapping from normalized to original column names for case-insensitive access
+    lower_to_orig = {str(c).strip().lower(): c for c in df_raw.columns}
+    for cand in list(col_candidates):
+        lower_key = cand.lower()
+        if lower_key in lower_to_orig:
+            col_candidates.append(lower_to_orig[lower_key])
+    # Ensure date column is normalized to string
+    df[date_col] = pd.to_datetime(df[date_col], errors="coerce").dt.strftime("%Y-%m-%d")
+    # Find a usable ticker column
+    ticker_col = None
+    for c in col_candidates:
+        if c in df.columns:
+            ticker_col = c
+            break
+    if ticker_col is None:
+        # Try original headers exact
+        for c in df_raw.columns:
+            if str(c).strip().upper() == ticker_u:
+                ticker_col = c
+                break
+    if ticker_col is None:
+        raise Exception(f"Ticker column {ticker_u} not found in testing CSV")
+
+    row = df[df[date_col] == date_str]
+    if row.empty:
+        raise Exception(f"No CSV price for {ticker_u} on {date_str}")
+    val = row.iloc[0][ticker_col]
+    if pd.isna(val):
+        raise Exception(f"NaN CSV price for {ticker_u} on {date_str}")
+    return float(val)
+
+
+def get_close_price(ticker: str, date: str) -> float:
+    """
+    Unified close-price resolver with preference: testing CSV -> Polygon -> local CSV -> yfinance.
+    """
+    # 1) testing/stock_prices.csv (user-provided authoritative data)
+    try:
+        return get_close_from_testing_csv(ticker, date)
+    except Exception:
+        pass
+    # 2) Polygon official close
+    try:
+        return get_polygon_close_price(ticker, date)
+    except Exception:
+        pass
+    # 3) Local per-ticker YFin CSV cache
+    try:
+        return get_price_from_csv(ticker, date)
+    except Exception:
+        pass
+    # 4) yfinance fallback (best-effort)
+    try:
+        start = datetime.strptime(date, "%Y-%m-%d")
+        end = start + relativedelta(days=1)
+        hist = yf.Ticker(ticker.upper()).history(start=start, end=end)
+        if not hist.empty:
+            return float(hist["Close"].iloc[-1])
+    except Exception:
+        pass
+    raise Exception(f"No price found for {ticker} on {date}")
 
 def get_finnhub_news(
     ticker: Annotated[
@@ -1058,12 +1203,23 @@ def get_YFin_data_window(
     start_date = before.strftime("%Y-%m-%d")
 
     # read in data
-    data = pd.read_csv(
-        os.path.join(
-            DATA_DIR,
-            f"market_data/price_data/{symbol}-YFin-data-2015-01-01-2025-07-27.csv",
+    try:
+        data = pd.read_csv(
+            os.path.join(
+                DATA_DIR,
+                f"market_data/price_data/{symbol}-YFin-data-2015-01-01-2025-07-27.csv",
+            )
         )
-    )
+    except Exception:
+        # Fallback to yfinance fetch if local CSV missing
+        start_dt = (datetime.strptime(curr_date, "%Y-%m-%d") - relativedelta(days=look_back_days+5)).strftime("%Y-%m-%d")
+        end_dt = curr_date
+        yf_df = yf.Ticker(symbol.upper()).history(start=start_dt, end=end_dt)
+        if yf_df.empty:
+            return f"No data found for {symbol} from {start_dt} to {end_dt}"
+        yf_df = yf_df.reset_index()
+        yf_df.rename(columns={"Date": "Date"}, inplace=True)
+        data = yf_df
 
     # Extract just the date part for comparison
     data["DateOnly"] = data["Date"].str[:10]
