@@ -17,6 +17,15 @@ import requests
 from openai import OpenAI
 from .config import get_config, set_config, DATA_DIR
 
+def _normalize_ticker_base(ticker: str) -> str:
+    """Normalize basic ticker format for cross-provider use.
+
+    - Uppercase
+    - Strip leading '$'
+    - Trim whitespace
+    """
+    return str(ticker).strip().upper().lstrip("$")
+
 def get_price_from_csv(
     ticker: str,
     date: str,
@@ -98,7 +107,9 @@ def get_polygon_close_price(ticker: str, date: str) -> float:
     Uses env POLYGON_API_KEY if set; otherwise falls back to provided key.
     """
     key = os.getenv("POLYGON_API_KEY") or "TY7U3esnUP3PvWVVLLKsH_SrlnNFGSnp"
-    url = f"https://api.polygon.io/v1/open-close/{ticker.upper()}/{date}?adjusted=true&apiKey={key}"
+    # Polygon uses dot notation for share classes (e.g., BRK.B)
+    poly_ticker = _normalize_ticker_base(ticker).replace("-", ".")
+    url = f"https://api.polygon.io/v1/open-close/{poly_ticker}/{date}?adjusted=true&apiKey={key}"
     try:
         resp = requests.get(url, timeout=10)
         resp.raise_for_status()
@@ -148,7 +159,7 @@ def get_close_from_testing_csv(ticker: str, date: str) -> float:
     # Long format path
     has_ticker = any(c in df.columns for c in ("ticker", "symbol"))
     has_close = any(c in df.columns for c in ("close", "adj_close", "adj_close_", "adjclose"))
-    ticker_u = ticker.upper()
+    ticker_u = _normalize_ticker_base(ticker)
     date_str = str(date).strip()[:10]
 
     if has_ticker and has_close:
@@ -166,11 +177,14 @@ def get_close_from_testing_csv(ticker: str, date: str) -> float:
         return float(val)
 
     # Wide format path: one column per ticker
-    # Try exact match, then case-insensitive match, then variants replacing dots with underscores and vice versa
+    # Try exact match, then case-insensitive match, then variants replacing dots/hyphens/underscores
     col_candidates = [
         ticker_u,
         ticker_u.replace(".", "_"),
         ticker_u.replace("_", "."),
+        ticker_u.replace("-", "_"),
+        ticker_u.replace("-", "."),
+        ticker_u.replace(".", "-"),
     ]
     # Build mapping from normalized to original column names for case-insensitive access
     lower_to_orig = {str(c).strip().lower(): c for c in df_raw.columns}
@@ -208,26 +222,34 @@ def get_close_price(ticker: str, date: str) -> float:
     """
     Unified close-price resolver with preference: testing CSV -> Polygon -> local CSV -> yfinance.
     """
+    base = _normalize_ticker_base(ticker)
     # 1) testing/stock_prices.csv (user-provided authoritative data)
-    try:
-        return get_close_from_testing_csv(ticker, date)
-    except Exception:
-        pass
-    # 2) Polygon official close
-    try:
-        return get_polygon_close_price(ticker, date)
-    except Exception:
-        pass
-    # 3) Local per-ticker YFin CSV cache
-    try:
-        return get_price_from_csv(ticker, date)
-    except Exception:
-        pass
-    # 4) yfinance fallback (best-effort)
+    csv_try_order = [base, base.replace(".", "-"), base.replace("-", "."), base.replace(".", "_")]
+    for sym in csv_try_order:
+        try:
+            return get_close_from_testing_csv(sym, date)
+        except Exception:
+            pass
+    # 2) Polygon official close (prefers dot notation)
+    polygon_try_order = [base.replace("-", "."), base]
+    for sym in polygon_try_order:
+        try:
+            return get_polygon_close_price(sym, date)
+        except Exception:
+            pass
+    # 3) Local per-ticker YFin CSV cache (Yahoo prefers hyphen)
+    csv_cache_try = [base.replace(".", "-"), base]
+    for sym in csv_cache_try:
+        try:
+            return get_price_from_csv(sym, date)
+        except Exception:
+            pass
+    # 4) yfinance fallback (best-effort, use hyphen form)
     try:
         start = datetime.strptime(date, "%Y-%m-%d")
         end = start + relativedelta(days=1)
-        hist = yf.Ticker(ticker.upper()).history(start=start, end=end)
+        yf_sym = base.replace(".", "-")
+        hist = yf.Ticker(yf_sym).history(start=start, end=end)
         if not hist.empty:
             return float(hist["Close"].iloc[-1])
     except Exception:

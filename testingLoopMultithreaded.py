@@ -502,6 +502,7 @@ def run_batch5_multithreaded(
             v[t] = 0.02 if a_up == 'BUY' else (-0.02 if a_up == 'SELL' else 0.0)
         return v
 
+    print(f"🧮 [MVO-BLM] Preparing LLM views for {date_str} ({len(tickers)} tickers)...")
     llm_views = _generate_llm_views(base_config, tickers, date_str)
 
     # Run MVO-BLM sizing for the day (no shorting enforced in pipeline)
@@ -520,6 +521,7 @@ def run_batch5_multithreaded(
                     prices[t] = 0.0
         return prices
 
+    print(f"🧮 [MVO-BLM] Fetching prices for {date_str}...")
     prices = _get_prices_for_date(tickers, date_str)
     # If every single ticker lacks a usable price, skip rebalancing (market holiday/data outage)
     nonzero_prices = sum(1 for _t, _p in prices.items() if (_p or 0.0) > 0)
@@ -554,10 +556,14 @@ def run_batch5_multithreaded(
         print(f"📸 Portfolio snapshot saved (prices unavailable; reval best-effort) -> {snap_path.as_posix()}")
         return
     portfolio_path = (Path.cwd() / "testing" / "portfolio.json").resolve()
+    print(f"🚀 [MVO-BLM] Running sizing (long-only) for {date_str}...")
+    mvo_t0 = time.time()
     # If rebalance_mode, derive decisions from LLM view signs so new positions can be opened
     if rebalance_mode and llm_views:
         decisions = {t: ("BUY" if llm_views.get(t, 0.0) > 0 else ("SELL" if llm_views.get(t, 0.0) < 0 else "HOLD")) for t in tickers}
     trades = size_positions(tickers, date_str, decisions, str(portfolio_path), prices, views=llm_views)
+    mvo_runtime = round(time.time() - mvo_t0, 2)
+    print(f"✅ [MVO-BLM] Completed sizing for {date_str} in {mvo_runtime}s")
 
     # Resizing report
     rr_lines = [f"# Resizing Report ({date_str})\n", "## Trades\n"]
@@ -884,6 +890,13 @@ def main():
                     valid_days.append(d.strftime('%Y-%m-%d'))
                 d += timedelta(days=1)
         universe = _load_tickers(args.tickers_file) or ["AAPL", "AMZN", "GOOG", "META", "NVDA"]
+        # Anchor first MVO-BLM rebalance to 2025-01-14 (then every 10 market days thereafter)
+        anchor_str = "2025-01-14"
+        anchor_idx = None
+        for i, d in enumerate(valid_days):
+            if d >= anchor_str:
+                anchor_idx = i
+                break
         for idx, day in enumerate(valid_days):
             # Extra safety: skip non-market days
             try:
@@ -901,7 +914,16 @@ def main():
                 reset_portfolio=(False if args.mvo_only else (day == valid_days[0])),
                 tickers=universe,
                 run_pipelines=(idx == 0 and not args.mvo_only),
-                rebalance_mode=((idx % 10 == 0) if args.mvo_only else (idx > 0 and idx % 10 == 0)),
+                rebalance_mode=(
+                    # MVO-only mode: use anchored schedule (first on 2025-01-14, then every 10 market days)
+                    (
+                        (anchor_idx is not None)
+                        and (idx >= anchor_idx)
+                        and (((idx - anchor_idx) % 10) == 0)
+                    ) if args.mvo_only else
+                    # Non-MVO-only: keep existing cadence (every 10th day after Day 0)
+                    (idx > 0 and idx % 10 == 0)
+                ),
             )
         # Compute backtest statistics over the range
         compute_backtest_statistics(
